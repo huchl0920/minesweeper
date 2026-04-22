@@ -207,7 +207,7 @@ export default function App() {
   }, [board, gameOver])
 
   const face = gameOver ? (won ? '😎' : '😵') : (started ? '🙂' : '😊')
-  const { rows, cols } = DIFFICULTIES[difficulty]
+  const { cols } = DIFFICULTIES[difficulty]
 
   return (
     <>
