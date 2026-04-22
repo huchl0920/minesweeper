@@ -155,8 +155,6 @@ export default function App() {
   const [geoLoading, setGeoLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [showSuggestions, setShowSuggestions] = useState(false)
-  const [hourlyOffset, setHourlyOffset] = useState(0)
-  const [dailyOffset, setDailyOffset] = useState(0)
   const [selectedDayIndex, setSelectedDayIndex] = useState(0)
   const searchRef = useRef<HTMLDivElement>(null)
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -179,7 +177,6 @@ export default function App() {
     const regionStr = [cleanAdmin1, geo.country].filter(Boolean).join(', ')
     setQuery(`${geo.name}${regionStr ? `, ${regionStr}` : ''}`)
     setLoading(true); setError(null)
-    setHourlyOffset(0); setDailyOffset(0)
     setSelectedDayIndex(0)
     try {
       const data = await fetchWeather(geo.latitude, geo.longitude)
@@ -228,8 +225,7 @@ export default function App() {
     }
   })() : null
 
-  const HOURLY_PER_PAGE = 5
-  const DAILY_PER_PAGE = 5
+
 
   return (
     <div className="weather-app">
@@ -304,14 +300,9 @@ export default function App() {
               <div className="dark-card">
                 <div className="card-header">
                   <span className="card-title">🕐 每小時天氣預報</span>
-                  <div className="nav-btns">
-                    <button className="nav-btn" onClick={() => setHourlyOffset(o => Math.max(0, o - HOURLY_PER_PAGE))} disabled={hourlyOffset === 0}>‹</button>
-                    <button className="nav-btn" onClick={() => setHourlyOffset(o => Math.min(24 - HOURLY_PER_PAGE, o + HOURLY_PER_PAGE))} disabled={hourlyOffset >= 24 - HOURLY_PER_PAGE}>›</button>
-                  </div>
                 </div>
                 <div className="hourly-grid">
-                  {hourlySlice.time.slice(hourlyOffset, hourlyOffset + HOURLY_PER_PAGE).map((t, i) => {
-                    const idx = hourlyOffset + i
+                  {hourlySlice.time.map((t, idx) => {
                     return (
                       <div key={t} className="hourly-col">
                         <div className="h-temp">{Math.round(hourlySlice.temperature_2m[idx])}°</div>
@@ -329,14 +320,9 @@ export default function App() {
             <div className="dark-card">
               <div className="card-header">
                 <span className="card-title">📅 未來 10 天的天氣預報</span>
-                <div className="nav-btns">
-                  <button className="nav-btn" onClick={() => setDailyOffset(o => Math.max(0, o - DAILY_PER_PAGE))} disabled={dailyOffset === 0}>‹</button>
-                  <button className="nav-btn" onClick={() => setDailyOffset(o => Math.min(daily.time.length - DAILY_PER_PAGE, o + DAILY_PER_PAGE))} disabled={dailyOffset >= daily.time.length - DAILY_PER_PAGE}>›</button>
-                </div>
               </div>
               <div className="daily-grid">
-                {daily.time.slice(dailyOffset, dailyOffset + DAILY_PER_PAGE).map((t, i) => {
-                  const idx = dailyOffset + i
+                {daily.time.map((t, idx) => {
                   const { day, date } = formatDayDate(t)
                   return (
                     <div 
