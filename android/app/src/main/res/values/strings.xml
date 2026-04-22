@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">minesweeper</string>
+    <string name="title_activity_main">minesweeper</string>
+    <string name="package_name">com.dragon.minesweeper</string>
+    <string name="custom_url_scheme">com.dragon.minesweeper</string>
+</resources>

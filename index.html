@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>💣 踩地雷</title>
+  <meta name="description" content="一個精美的踩地雷遊戲，支援多種難度與流暢動畫。" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <!-- Animated background orbs -->
+  <div class="bg-orb orb1"></div>
+  <div class="bg-orb orb2"></div>
+  <div class="bg-orb orb3"></div>
+
+  <div class="app-wrapper">
+    <!-- Header -->
+    <header class="app-header">
+      <div class="logo">
+        <span class="logo-icon">💣</span>
+        <h1 class="logo-text">踩地雷</h1>
+      </div>
+    </header>
+
+    <!-- Control Panel -->
+    <section class="control-panel" aria-label="遊戲控制">
+      <!-- Difficulty Selector -->
+      <div class="difficulty-group">
+        <button id="btn-easy"   class="diff-btn active" data-diff="easy">初級</button>
+        <button id="btn-medium" class="diff-btn"        data-diff="medium">中級</button>
+        <button id="btn-hard"   class="diff-btn"        data-diff="hard">高級</button>
+      </div>
+
+      <!-- Status Bar -->
+      <div class="status-bar">
+        <div class="stat-box" id="mine-counter" aria-label="剩餘地雷數">
+          <span class="stat-icon">💣</span>
+          <span class="stat-value" id="mines-left">10</span>
+        </div>
+
+        <button class="reset-btn" id="reset-btn" title="重新開始" aria-label="重新開始">
+          <span id="face-icon">😊</span>
+        </button>
+
+        <div class="stat-box" id="timer-box" aria-label="已用時間">
+          <span class="stat-icon">⏱</span>
+          <span class="stat-value" id="timer">000</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- Board -->
+    <main class="board-container" aria-label="遊戲棋盤">
+      <div id="board" class="board"></div>
+    </main>
+
+    <!-- Overlay (Win / Lose) -->
+    <div class="overlay hidden" id="overlay" role="dialog" aria-modal="true" aria-labelledby="overlay-title">
+      <div class="overlay-card">
+        <div class="overlay-emoji" id="overlay-emoji">🎉</div>
+        <h2 class="overlay-title" id="overlay-title">你贏了！</h2>
+        <p class="overlay-subtitle" id="overlay-subtitle">恭喜完成！</p>
+        <button class="play-again-btn" id="play-again-btn">再來一局</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
