@@ -120,6 +120,35 @@ export default function RhythmApp({ onBack }: { onBack: () => void }) {
     }
   };
 
+  const loadBuiltInMusic = async () => {
+    setMusicName('Viper (MDN Demo)');
+    setGameState('analyzing');
+    setAnalyzeProgress(10);
+    try {
+      const res = await fetch('/viper.mp3');
+      const arrayBuffer = await res.arrayBuffer();
+      setAnalyzeProgress(40);
+
+      if (!audioCtxRef.current || audioCtxRef.current.state === 'closed') {
+        audioCtxRef.current = new AudioContext();
+      }
+      const decoded = await audioCtxRef.current.decodeAudioData(arrayBuffer);
+      audioBufferRef.current = decoded;
+      setAnalyzeProgress(60);
+
+      const beats = await detectBeats(decoded);
+      beatScheduleRef.current = beats;
+      setAnalyzeProgress(100);
+      setBeatMode('music');
+      setGameState('start');
+    } catch (err) {
+      console.error('Failed to load built-in music:', err);
+      setMusicName(null);
+      setBeatMode('random');
+      setGameState('start');
+    }
+  };
+
   // ── Judge ──
   const judgePress = useCallback((lane: number) => {
     let bestNote: Note | null = null;
@@ -426,8 +455,12 @@ export default function RhythmApp({ onBack }: { onBack: () => void }) {
                   {beatMode === 'random' && <div className="mode-selected-dot" />}
                 </button>
                 <button className="music-mode-btn" onClick={() => fileInputRef.current?.click()}>
-                  <span>📂</span><br />選擇音樂
-                  {beatMode === 'music' && <div className="mode-selected-dot" />}
+                  <span>📂</span><br />上傳音樂
+                  {beatMode === 'music' && musicName !== 'Viper (MDN Demo)' && <div className="mode-selected-dot" />}
+                </button>
+                <button className="music-mode-btn" onClick={loadBuiltInMusic}>
+                  <span>🎧</span><br />內建預設
+                  {beatMode === 'music' && musicName === 'Viper (MDN Demo)' && <div className="mode-selected-dot" />}
                 </button>
               </div>
               {musicName && beatMode === 'music' && (
