@@ -51,6 +51,22 @@ export default function Home({ onAppClick }: Props) {
             </div>
             <span className="app-label">霓虹生存戰</span>
           </div>
+
+          {/* Fluid Core */}
+          <div className="app-icon-wrapper" onClick={() => onAppClick('fluidcore')}>
+            <div className="app-icon" style={{ background: 'linear-gradient(135deg, #0ea5e9, #0369a1)', border: '2px solid #38bdf8', boxShadow: '0 0 10px #0ea5e9' }}>
+              <span className="icon-emoji">🌊</span>
+            </div>
+            <span className="app-label">流體力場</span>
+          </div>
+
+          {/* Chrono Shatter */}
+          <div className="app-icon-wrapper" onClick={() => onAppClick('chronoshatter')}>
+            <div className="app-icon" style={{ background: 'linear-gradient(135deg, #c084fc, #6b21a8)', border: '2px solid #d8b4fe', boxShadow: '0 0 10px #c084fc' }}>
+              <span className="icon-emoji">🪞</span>
+            </div>
+            <span className="app-label">碎時空</span>
+          </div>
         </div>
       </div>
     </div>
