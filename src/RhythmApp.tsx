@@ -215,8 +215,9 @@ export default function RhythmApp({ onBack }: { onBack: () => void }) {
 
     const spawnNote = (now: number, musicTime?: number) => {
       if (beatMode === 'music' && musicTime !== undefined) {
-        // Beat-scheduled: look ahead by (canvasHeight - judgeY) / speed / 60 seconds
-        const lookahead = (canvasHeight - judgeY) / speedRef.current / 60;
+        // 音符從 y = -NOTE_H 掉到 y = judgeY，總距離是 judgeY + NOTE_H
+        // 依照目前的落下速度與 60fps 基準，計算需要提早幾秒生成
+        const lookahead = (judgeY + NOTE_H) / speedRef.current / 60;
         const schedule = beatScheduleRef.current;
         while (beatIdxRef.current < schedule.length && schedule[beatIdxRef.current] <= musicTime + lookahead) {
           const lane = Math.floor(Math.random() * LANES);
