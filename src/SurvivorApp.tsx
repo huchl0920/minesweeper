@@ -156,7 +156,7 @@ const WEAPONS: Record<string, WeaponDef> = {
   gear: {
     id: 'gear', name: '旋轉齒輪', icon: '⚙️', maxLevel: 8,
     getDesc: (l) => `環繞絞殺物件 (傷 ${20+l*10}, 數量 ${1+l})`,
-    getCd: (l) => 3000,
+    getCd: () => 3000,
     fire: (ctx, l) => {
        const count = 1 + l;
        // We let them last for 3s (which matches the 3000ms CD basically giving 100% uptime)
