@@ -9,7 +9,7 @@ const CHARGE_RATE = 0.3;
 const CHAR_WIDTH = 30;
 const CHAR_HEIGHT = 30;
 const PLAT_HEIGHT = 16;
-const MAX_SPEED_X = 3;
+const MAX_SPEED_X = 2;
 
 interface Platform {
   id: number;
@@ -46,6 +46,8 @@ export default function GameApp({ onBack }: { onBack: () => void }) {
   const platforms = useRef<Platform[]>([]);
   const scoreRef = useRef(0);
   const platformId = useRef(0);
+  const lastSide = useRef<'left' | 'right'>('left');
+  const sameCount = useRef(0); // 連續同側計數
 
 
   const saveScore = (s: number) => {
@@ -56,9 +58,32 @@ export default function GameApp({ onBack }: { onBack: () => void }) {
     });
   };
 
+  // 單一平台生成：帶狀態的機率交錯邏輯
   const spawnPlatform = (y: number) => {
-    const w = 100; // 固定平台寬度
-    const x = Math.random() * (WIDTH - w);
+    const w = 160 + Math.random() * 60; // 寬度 160~220 px
+
+    // 決定這次要左還是右
+    let side: 'left' | 'right';
+    if (sameCount.current >= 2) {
+      // 連續同側超過 2 個，強制換邊
+      side = lastSide.current === 'left' ? 'right' : 'left';
+    } else {
+      // 70% 機率換邊，30% 機率留同側
+      const wantSwitch = Math.random() < 0.7;
+      side = wantSwitch
+        ? (lastSide.current === 'left' ? 'right' : 'left')
+        : lastSide.current;
+    }
+
+    // 更新連續計數
+    if (side === lastSide.current) sameCount.current++;
+    else sameCount.current = 1;
+    lastSide.current = side;
+
+    const x = side === 'left'
+      ? Math.random() * 50          // 靠左：0~50
+      : WIDTH - w - Math.random() * 50; // 靠右：距右緣 0~50
+
     platforms.current.push({ id: platformId.current++, x, y, w });
   };
 
@@ -77,14 +102,16 @@ export default function GameApp({ onBack }: { onBack: () => void }) {
     setScore(0);
     isCharging.current = false;
     platformId.current = 0;
+    lastSide.current = 'left';
+    sameCount.current = 0;
 
     platforms.current = [
-      { id: platformId.current++, x: 0, y: HEIGHT - 80, w: WIDTH }, // Ground
+      { id: platformId.current++, x: 0, y: HEIGHT - 80, w: WIDTH }, // 地板
     ];
     let nextY = HEIGHT - 200;
     while (nextY > -HEIGHT) {
       spawnPlatform(nextY);
-      nextY -= Math.random() * 40 + 60;
+      nextY -= Math.random() * 50 + 70;
     }
   };
 
@@ -184,11 +211,10 @@ export default function GameApp({ onBack }: { onBack: () => void }) {
         cameraY.current -= (HEIGHT / 2 - targetScreenY) * 0.2; // Smooth camera
       }
 
-      // 6. Platform generation & cleanup
-      // highest platform
+      // 6. 平台生成
       const highestPlat = platforms.current[platforms.current.length - 1];
       if (highestPlat.y - cameraY.current > 0) {
-        spawnPlatform(highestPlat.y - (Math.random() * 40 + 60));
+        spawnPlatform(highestPlat.y - (Math.random() * 50 + 70));
       }
       
       // score update (based on height climbed)

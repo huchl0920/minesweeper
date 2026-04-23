@@ -33,7 +33,15 @@ export default function Home({ onAppClick }: Props) {
             <div className="app-icon game-icon">
               <span className="icon-emoji">🎮</span>
             </div>
-            <span className="app-label">小遊戲</span>
+            <span className="app-label">上樓梯</span>
+          </div>
+
+          {/* Rhythm */}
+          <div className="app-icon-wrapper" onClick={() => onAppClick('rhythm')}>
+            <div className="app-icon rhythm-icon">
+              <span className="icon-emoji">🎵</span>
+            </div>
+            <span className="app-label">節奏大師</span>
           </div>
         </div>
       </div>

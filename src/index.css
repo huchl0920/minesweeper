@@ -455,6 +455,9 @@
 .game-icon {
   background: linear-gradient(135deg, #7c3aed, #d946ef);
 }
+.rhythm-icon {
+  background: linear-gradient(135deg, #f43f5e, #fb923c);
+}
 .app-label {
   font-size: 0.85rem;
   font-weight: 600;
@@ -551,6 +554,103 @@
   font-weight: 600;
 }
 .lb-row:last-child { border-bottom: none; }
+
+/* ── Rhythm App ───────────────────────────────────── */
+.rhythm-bg-layer {
+  background: linear-gradient(180deg, #1a0533 0%, #3b0764 100%);
+}
+.rhythm-canvas {
+  display: block;
+  width: 100%;
+  max-width: 480px;
+  margin: 0 auto;
+  border-radius: 0 0 var(--radius) var(--radius);
+}
+.rhythm-hud {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px;
+  background: rgba(0,0,0,0.3);
+  max-width: 480px;
+  margin: 0 auto;
+}
+.rhythm-label {
+  font-size: 0.65rem;
+  letter-spacing: 2px;
+  color: rgba(255,255,255,0.4);
+  margin-bottom: 2px;
+}
+.rhythm-value {
+  font-size: 1.1rem;
+  font-weight: 800;
+}
+.rhythm-score { min-width: 90px; }
+.rhythm-combo { min-width: 60px; text-align: center; }
+.rhythm-hp { flex: 1; }
+.hp-bar {
+  height: 8px;
+  background: rgba(255,255,255,0.12);
+  border-radius: 4px;
+  overflow: hidden;
+}
+.hp-fill {
+  height: 100%;
+  border-radius: 4px;
+  transition: width 0.2s, background 0.4s;
+}
+.rhythm-touch-row {
+  position: absolute;
+  bottom: 0; left: 0; right: 0;
+  display: flex;
+  pointer-events: none;
+}
+.rhythm-touch-btn {
+  flex: 1;
+  height: 56px;
+  border: 2px solid;
+  border-bottom: none;
+  background: transparent;
+  color: #fff;
+  font-size: 1rem;
+  font-weight: 700;
+  pointer-events: all;
+  cursor: pointer;
+  opacity: 0.85;
+  transition: opacity 0.1s;
+}
+.rhythm-touch-btn:active { opacity: 1; }
+
+/* ── Rhythm Extras ──────────────────────────────────── */
+@keyframes countPop {
+  0% { transform: scale(0.5); opacity: 0; }
+  60% { transform: scale(1.2); opacity: 1; }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+.analyze-bar {
+  width: 200px; height: 6px; background: rgba(255,255,255,0.1);
+  border-radius: 4px; overflow: hidden; margin: 0 auto;
+}
+.analyze-fill {
+  height: 100%; background: #60a5fa; border-radius: 4px;
+  transition: width 0.1s;
+}
+
+.music-mode-btn {
+  background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 12px; padding: 12px 16px; color: #fff; cursor: pointer;
+  position: relative; overflow: hidden; transition: 0.2s;
+  font-size: 0.85rem; font-weight: 600; text-align: center;
+  min-width: 100px;
+}
+.music-mode-btn:hover { background: rgba(255,255,255,0.15); }
+.music-mode-btn span { font-size: 1.5rem; display: block; margin-bottom: 6px; }
+.mode-selected-dot {
+  position: absolute; top: 8px; right: 8px;
+  width: 8px; height: 8px; background: #60a5fa;
+  border-radius: 50%; box-shadow: 0 0 6px #60a5fa;
+}
 
 /* ── Responsive ───────────────────────────────────── */
 @media (max-width: 400px) {
