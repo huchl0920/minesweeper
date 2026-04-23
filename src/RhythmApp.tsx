@@ -75,6 +75,7 @@ export default function RhythmApp({ onBack }: { onBack: () => void }) {
   const frameRef = useRef<number>(0);
   const lastSpawn = useRef(0);
   const beatIdxRef = useRef(0); // index into beatScheduleRef
+  const lastTimeRef = useRef(0);
 
   const speedRef = useRef(noteSpeed);
   useEffect(() => { speedRef.current = noteSpeed; }, [noteSpeed]);
@@ -204,6 +205,13 @@ export default function RhythmApp({ onBack }: { onBack: () => void }) {
     };
 
     const loop = (timestamp: number) => {
+      if (!lastTimeRef.current) lastTimeRef.current = timestamp;
+      const delta = timestamp - lastTimeRef.current;
+      lastTimeRef.current = timestamp;
+      
+      // 計算相對於 60fps (16.666ms) 的倍率，並加上上限避免切換分頁回來瞬間穿越
+      const dtMultiplier = Math.min(delta / 16.666, 3);
+
       ctx.clearRect(0, 0, canvasWidth, canvasHeight);
 
       const musicTime = beatMode === 'music' && audioCtxRef.current
@@ -244,7 +252,7 @@ export default function RhythmApp({ onBack }: { onBack: () => void }) {
       // Notes
       for (const n of notes.current) {
         if (!n.hit) {
-          n.y += speedRef.current;
+          n.y += speedRef.current * dtMultiplier;
           if (n.y > judgeY + MISS_RANGE && !n.hit) {
             n.hit = 'miss'; n.hitTimer = 15;
             comboRef.current = 0; setCombo(0);
@@ -270,7 +278,7 @@ export default function RhythmApp({ onBack }: { onBack: () => void }) {
         ctx.globalAlpha = e.alpha; ctx.fillStyle = e.color;
         ctx.font = 'bold 22px sans-serif'; ctx.textAlign = 'center';
         ctx.fillText(e.text, e.x, e.y);
-        ctx.globalAlpha = 1; e.y -= 1.2; e.alpha -= 0.025;
+        ctx.globalAlpha = 1; e.y -= 1.2 * dtMultiplier; e.alpha -= 0.025 * dtMultiplier;
       }
       effects.current = effects.current.filter(e => e.alpha > 0);
 
@@ -311,6 +319,7 @@ export default function RhythmApp({ onBack }: { onBack: () => void }) {
     pressedLanes.current = new Set();
     lastSpawn.current = 0;
     beatIdxRef.current = 0;
+    lastTimeRef.current = 0;
     setScore(0); setCombo(0); setHp(MAX_HP); setResult(null);
     setCountdown(3);
     setGameState('countdown');
