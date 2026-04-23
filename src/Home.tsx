@@ -1,4 +1,4 @@
-
+import React from 'react';
 
 interface Props {
   onAppClick: (appId: string) => void;
@@ -42,6 +42,14 @@ export default function Home({ onAppClick }: Props) {
               <span className="icon-emoji">🎵</span>
             </div>
             <span className="app-label">節奏大師</span>
+          </div>
+
+          {/* Survivor */}
+          <div className="app-icon-wrapper" onClick={() => onAppClick('survivor')}>
+            <div className="app-icon survivor-icon" style={{ background: 'linear-gradient(135deg, #10b981, #047857)' }}>
+              <span className="icon-emoji">🔫</span>
+            </div>
+            <span className="app-label">霓虹生存戰</span>
           </div>
         </div>
       </div>
