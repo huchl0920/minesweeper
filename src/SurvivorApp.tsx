@@ -9,7 +9,7 @@ interface Player {
 
 interface Enemy {
   id: number; x: number; y: number; hp: number; maxHp: number; speed: number; radius: number;
-  type: 'basic' | 'elite' | 'boss'; dead?: boolean;
+  type: 'basic' | 'elite' | 'boss'; dead?: boolean; freezeTimer?: number;
 }
 
 interface Bullet {
@@ -19,6 +19,7 @@ interface Bullet {
   boomerang?: boolean;
   orbit?: { angle: number, radius: number, speed: number };
   dot?: boolean;
+  seeking?: boolean; spawn_poison?: number; freeze?: number;
 }
 
 interface ExpGem { id: number; x: number; y: number; value: number; }
@@ -52,15 +53,17 @@ const getDir = (p: Player | Bullet, e: ReturnType<typeof getNearest>) => {
 };
 
 interface WeaponDef {
-  id: string; name: string; icon: string; maxLevel: number;
+  id: string; name: string; icon: string; maxLevel: number; isEvolution?: boolean;
   getDesc: (level: number) => string;
   getCd: (level: number) => number;
   fire: (ctx: WeaponContext, level: number) => void;
 }
 
+const basicWeaponMaxLevel = 5
+const evolutionWeaponMaxLevel = 1
 const WEAPONS: Record<string, WeaponDef> = {
   handgun: {
-    id: 'handgun', name: '小手槍', icon: '🔫', maxLevel: 8,
+    id: 'handgun', name: '小手槍', icon: '🔫', maxLevel: basicWeaponMaxLevel,
     getDesc: (l) => `射擊單體 (傷 ${10 + l*5}, 穿透 ${l})`,
     getCd: (l) => Math.max(100, 400 - l*30),
     fire: (ctx, l) => {
@@ -71,7 +74,7 @@ const WEAPONS: Record<string, WeaponDef> = {
     }
   },
   shotgun: {
-    id: 'shotgun', name: '散彈槍', icon: '💥', maxLevel: 8,
+    id: 'shotgun', name: '散彈槍', icon: '💥', maxLevel: basicWeaponMaxLevel,
     getDesc: (l) => `面狀射擊 (彈丸 ${2+l}, 傷 ${10+l*3})`,
     getCd: (l) => Math.max(400, 1000 - l*50),
     fire: (ctx, l) => {
@@ -87,7 +90,7 @@ const WEAPONS: Record<string, WeaponDef> = {
     }
   },
   sniper: {
-    id: 'sniper', name: '狙擊槍', icon: '🎯', maxLevel: 8,
+    id: 'sniper', name: '狙擊槍', icon: '🎯', maxLevel: basicWeaponMaxLevel,
     getDesc: (l) => `直線毀滅 (傷 ${50+l*25}, CD -${l*100}ms)`,
     getCd: (l) => Math.max(500, 2000 - l*100),
     fire: (ctx, l) => {
@@ -98,7 +101,7 @@ const WEAPONS: Record<string, WeaponDef> = {
     }
   },
   rocket: {
-    id: 'rocket', name: '火箭筒', icon: '🚀', maxLevel: 8,
+    id: 'rocket', name: '火箭筒', icon: '🚀', maxLevel: basicWeaponMaxLevel,
     getDesc: (l) => `範圍爆炸 (傷 ${30+l*20}, 範圍 ${60+l*10})`,
     getCd: (l) => 2500 - l*100,
     fire: (ctx, l) => {
@@ -109,7 +112,7 @@ const WEAPONS: Record<string, WeaponDef> = {
     }
   },
   boomerang: {
-    id: 'boomerang', name: '迴旋鏢', icon: '🪃', maxLevel: 8,
+    id: 'boomerang', name: '迴旋鏢', icon: '🪃', maxLevel: basicWeaponMaxLevel,
     getDesc: (l) => `飛出自轉回歸 (傷 ${15+l*5}, 穿透無數)`,
     getCd: (l) => Math.max(500, 1500 - l*100),
     fire: (ctx, l) => {
@@ -120,7 +123,7 @@ const WEAPONS: Record<string, WeaponDef> = {
     }
   },
   mine: {
-    id: 'mine', name: '地雷', icon: '💣', maxLevel: 8,
+    id: 'mine', name: '地雷', icon: '💣', maxLevel: basicWeaponMaxLevel,
     getDesc: (l) => `放置引爆 (傷 ${50+l*20}, 範圍 ${70+l*10})`,
     getCd: (l) => Math.max(800, 3000 - l*200),
     fire: (ctx, l) => {
@@ -128,7 +131,7 @@ const WEAPONS: Record<string, WeaponDef> = {
     }
   },
   aura: {
-    id: 'aura', name: '特斯拉圈', icon: '⚡', maxLevel: 8,
+    id: 'aura', name: '特斯拉圈', icon: '⚡', maxLevel: basicWeaponMaxLevel,
     getDesc: (l) => `電擊周遭 (傷 ${8+l*4}, 範圍 ${90+l*15})`,
     getCd: (l) => Math.max(100, 500 - l*40),
     fire: (ctx, l) => {
@@ -142,7 +145,7 @@ const WEAPONS: Record<string, WeaponDef> = {
     }
   },
   flamer: {
-    id: 'flamer', name: '噴火器', icon: '🔥', maxLevel: 8,
+    id: 'flamer', name: '噴火器', icon: '🔥', maxLevel: basicWeaponMaxLevel,
     getDesc: (l) => `前方烈火狂噴 (傷 ${5+l*2}, CD極短)`,
     getCd: (l) => Math.max(20, 80 - l*5),
     fire: (ctx, l) => {
@@ -154,7 +157,7 @@ const WEAPONS: Record<string, WeaponDef> = {
     }
   },
   gear: {
-    id: 'gear', name: '旋轉齒輪', icon: '⚙️', maxLevel: 8,
+    id: 'gear', name: '旋轉齒輪', icon: '⚙️', maxLevel: basicWeaponMaxLevel,
     getDesc: (l) => `環繞絞殺物件 (傷 ${20+l*10}, 數量 ${1+l})`,
     getCd: () => 3000,
     fire: (ctx, l) => {
@@ -167,16 +170,154 @@ const WEAPONS: Record<string, WeaponDef> = {
     }
   },
   poison: {
-    id: 'poison', name: '毒氣光環', icon: '🧪', maxLevel: 8,
+    id: 'poison', name: '毒氣光環', icon: '🧪', maxLevel: basicWeaponMaxLevel,
     getDesc: (l) => `定點腐蝕池 (秒傷 ${15+l*10}, 範圍 ${80+l*10})`,
     getCd: (l) => Math.max(800, 2000 - l*100),
     fire: (ctx, l) => {
        ctx.addBullet({ x: ctx.p.x, y: ctx.p.y, vx: 0, vy: 0, damage: 15+l*10, pierce: 999, life: 4, color: 'rgba(34, 197, 94, 0.4)', radius: 80+l*10, dot: true });
     }
+  },
+  hellfire: {
+    id: 'hellfire', name: '🔥 地獄火雙銃', icon: '🌋', maxLevel: evolutionWeaponMaxLevel, isEvolution: true,
+    getDesc: (l) => `融合技！連發熔岩爆破 (傷 ${100+l*50})`,
+    getCd: (l) => Math.max(100, 300 - l*40),
+    fire: (ctx, l) => {
+       const target = getNearest(ctx.p, ctx.enemies);
+       if(!target) return;
+       const { dx, dy, mag } = getDir(ctx.p, target);
+       ctx.addBullet({ x: ctx.p.x, y: ctx.p.y, vx: dx/mag*800, vy: dy/mag*800, damage: 100+l*50, pierce: 3, life: 2, color: '#ffea00', radius: 10, explosive_radius: 50 });
+    }
+  },
+  cluster_bomb: {
+    id: 'cluster_bomb', name: '🚀 集束核爆', icon: '☢️', maxLevel: evolutionWeaponMaxLevel, isEvolution: true,
+    getDesc: (l) => `融合技！散彈核彈發射 (核彈丸 ${3+l}, 範圍 ${80})`,
+    getCd: (l) => Math.max(1000, 2500 - l*200),
+    fire: (ctx, l) => {
+       const target = getNearest(ctx.p, ctx.enemies);
+       if(!target) return;
+       const pellets = 3 + l;
+       const { dx, dy } = getDir(ctx.p, target);
+       const baseAngle = Math.atan2(dy, dx);
+       for(let i=0; i<pellets; i++){
+          const angle = baseAngle + (Math.random() - 0.5) * 1.0;
+          ctx.addBullet({ x: ctx.p.x, y: ctx.p.y, vx: Math.cos(angle)*600, vy: Math.sin(angle)*600, damage: 150+l*50, pierce: 1, life: 1.5, color: '#fca5a5', radius: 12, explosive_radius: 80 });
+       }
+    }
+  },
+  plasma_field: {
+    id: 'plasma_field', name: '⚡ 電漿毀滅場', icon: '🌌', maxLevel: evolutionWeaponMaxLevel, isEvolution: true,
+    getDesc: () => `融合技！全畫面絞殺與高壓閃電`,
+    getCd: () => 2500,
+    fire: (ctx, l) => {
+       const count = 3 + l;
+       for (let i = 0; i<count; i++) {
+          ctx.addBullet({ x: ctx.p.x, y: ctx.p.y, vx: 0, vy: 0, damage: 50+l*20, pierce: 999, life: 2.4, color: '#38bdf8', radius: 18, 
+            orbit: { angle: (Math.PI*2/count)*i, radius: 140, speed: Math.PI } });
+       }
+       const r = 180 + l*20;
+       for (const e of ctx.enemies) {
+          if (Math.hypot(e.x - ctx.p.x, e.y - ctx.p.y) < r) {
+             ctx.damageEnemy(e, 30+l*10);
+             ctx.addParticle({ type: 'lightning', x: ctx.p.x, y: ctx.p.y, tx: e.x, ty: e.y, life: 0.2, maxLife: 0.2 });
+          }
+       }
+    }
+  },
+  seeking_arrow: {
+    id: 'seeking_arrow', name: '🏹 追蹤神箭', icon: '🏹', maxLevel: evolutionWeaponMaxLevel, isEvolution: true,
+    getDesc: (l) => `融合技！滿畫面追蹤穿透 (傷 ${150+l*50})`,
+    getCd: (l) => Math.max(500, 1500 - l*100),
+    fire: (ctx, l) => {
+       const target = getRandomTarget(ctx.enemies);
+       if(!target) return;
+       ctx.addBullet({ x: ctx.p.x, y: ctx.p.y, vx: 0, vy: 0, damage: 150+l*50, pierce: 999, life: 3, color: '#a78bfa', radius: 10, seeking: true });
+    }
+  },
+  toxic_spore: {
+    id: 'toxic_spore', name: '🍄 劇毒母體', icon: '🍄', maxLevel: evolutionWeaponMaxLevel, isEvolution: true,
+    getDesc: () => `融合技！地雷生成限時爆發毒氣`,
+    getCd: (l) => Math.max(800, 3000 - l*200),
+    fire: (ctx, l) => {
+       ctx.addBullet({ x: ctx.p.x, y: ctx.p.y, vx: 0, vy: 0, damage: 150+l*80, pierce: 1, life: 5, color: '#a3e635', radius: 15, explosive_radius: 120+l*20, spawn_poison: 120+l*20 });
+    }
+  },
+  laser: {
+    id: 'laser', name: '脈衝雷射', icon: '⚡', maxLevel: basicWeaponMaxLevel,
+    getDesc: (l) => `貫穿光束 (傷 ${20+l*10}, 極速)`,
+    getCd: (l) =>  Math.max(300, 1000 - l*100),
+    fire: (ctx, l) => {
+       const target = getNearest(ctx.p, ctx.enemies);
+       if(!target) return;
+       const { dx, dy, mag } = getDir(ctx.p, target);
+       ctx.addBullet({ x: ctx.p.x, y: ctx.p.y, vx: dx/mag*2500, vy: dy/mag*2500, damage: 20+l*10, pierce: 999, life: 1, color: '#0ea5e9', radius: 6 });
+    }
+  },
+  icicle: {
+    id: 'icicle', name: '寒冰錐', icon: '🧊', maxLevel: basicWeaponMaxLevel,
+    getDesc: (l) => `減速冰霜 (傷 ${15+l*5}, 霜凍)`,
+    getCd: (l) => Math.max(400, 1200 - l*100),
+    fire: (ctx, l) => {
+       const target = getRandomTarget(ctx.enemies);
+       if(!target) return;
+       const { dx, dy, mag } = getDir(ctx.p, target);
+       ctx.addBullet({ x: ctx.p.x, y: ctx.p.y, vx: dx/mag*400, vy: dy/mag*400, damage: 15+l*5, pierce: 1, life: 2, color: '#7dd3fc', radius: 8, freeze: 1.5 });
+    }
+  },
+  sword: {
+    id: 'sword', name: '聖劍', icon: '🗡️', maxLevel: basicWeaponMaxLevel,
+    getDesc: (l) => `定點弧斬 (傷 ${40+l*20})`,
+    getCd: (l) => Math.max(400, 1500 - l*150),
+    fire: (ctx, l) => {
+       const px = ctx.p.x + (Math.random()-0.5)*150;
+       const py = ctx.p.y + (Math.random()-0.5)*150;
+       ctx.addBullet({ x: px, y: py, vx: 0, vy: 0, damage: 40+l*20, pierce: 999, life: 0.3, color: '#fcd34d', radius: 35+l*10 });
+    }
+  },
+  drone: {
+    id: 'drone', name: '無人機', icon: '🛸', maxLevel: basicWeaponMaxLevel,
+    getDesc: (l) => `滯空轟炸 (傷 ${10+l*5})`,
+    getCd: (l) => Math.max(300, 800 - l*50),
+    fire: (ctx, l) => {
+       const px = ctx.p.x + (Math.random()-0.5)*400;
+       const py = ctx.p.y + (Math.random()-0.5)*400;
+       ctx.addBullet({ x: px, y: py, vx: 0, vy: 0, damage: 10+l*5, pierce: 1, life: 1, color: '#d1d5db', radius: 8, explosive_radius: 60 });
+    }
+  },
+  zero_ray: {
+    id: 'zero_ray', name: '❄️ 絕對零度', icon: '❄️', maxLevel: evolutionWeaponMaxLevel, isEvolution: true,
+    getDesc: () => `融合技！極凍貫穿射線`,
+    getCd: (l) => Math.max(100, 400 - l*50),
+    fire: (ctx, l) => {
+       const target = getRandomTarget(ctx.enemies);
+       if(!target) return;
+       const { dx, dy, mag } = getDir(ctx.p, target);
+       ctx.addBullet({ x: ctx.p.x, y: ctx.p.y, vx: dx/mag*2500, vy: dy/mag*2500, damage: 60+l*20, pierce: 999, life: 1.5, color: '#bae6fd', radius: 18, freeze: 4 });
+    }
+  },
+  orbital_swords: {
+    id: 'orbital_swords', name: '⚔️ 萬劍訣', icon: '⚔️', maxLevel: evolutionWeaponMaxLevel, isEvolution: true,
+    getDesc: () => `融合技！極速環繞飛劍`,
+    getCd: () => 1500,
+    fire: (ctx, l) => {
+       const count = 4 + l*2;
+       for (let i=0; i<count; i++) {
+          ctx.addBullet({ x: ctx.p.x, y: ctx.p.y, vx: 0, vy: 0, damage: 80+l*30, pierce: 999, life: 1.4, color: '#fbbf24', radius: 15, orbit: { angle: (Math.PI*2/count)*i, radius: 180, speed: Math.PI*3 } });
+       }
+    }
   }
 };
 
-const MAX_EQUIPPED = 5;
+const EVOLUTIONS = [
+  { w1: 'handgun', w2: 'flamer', result: 'hellfire' },
+  { w1: 'shotgun', w2: 'rocket', result: 'cluster_bomb' },
+  { w1: 'aura', w2: 'gear', result: 'plasma_field' },
+  { w1: 'sniper', w2: 'boomerang', result: 'seeking_arrow' },
+  { w1: 'mine', w2: 'poison', result: 'toxic_spore' },
+  { w1: 'laser', w2: 'icicle', result: 'zero_ray' },
+  { w1: 'sword', w2: 'drone', result: 'orbital_swords' }
+];
+
+const MAX_EQUIPPED = 6;
 
 // Global Setup
 const getDiamonds = () => parseInt(localStorage.getItem('ns_diamonds') || '0', 10);
@@ -189,7 +330,7 @@ const saveLeaderboard = (lb: LeaderboardEntry[]) => localStorage.setItem('ns_lea
 const getBaseStats = () => JSON.parse(localStorage.getItem('ns_base_stats') || '{"hp":0, "speed":0, "magnet":0}');
 const saveBaseStats = (stats: any) => localStorage.setItem('ns_base_stats', JSON.stringify(stats));
 
-type UpgradeChoice = { id: string; isNew: boolean; level: number; def: WeaponDef };
+type UpgradeChoice = { id: string; isNew: boolean; level: number; def: WeaponDef; isEvo?: boolean; consumed?: string[] };
 
 export default function SurvivorApp({ onBack }: { onBack: () => void }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -278,23 +419,59 @@ export default function SurvivorApp({ onBack }: { onBack: () => void }) {
   };
 
   const generateUpgradeChoices = () => {
+    const excludeList = new Set<string>();
+    const evos: UpgradeChoice[] = [];
+    EVOLUTIONS.forEach(evo => {
+       if (weaponsRef.current[evo.result]) {
+         excludeList.add(evo.w1);
+         excludeList.add(evo.w2);
+       }
+       if (weaponsRef.current[evo.w1] === WEAPONS[evo.w1].maxLevel && weaponsRef.current[evo.w2] === WEAPONS[evo.w2].maxLevel && !weaponsRef.current[evo.result]) {
+          evos.push({ id: evo.result, isNew: true, level: 1, def: WEAPONS[evo.result], isEvo: true, consumed: [evo.w1, evo.w2] });
+       }
+    });
+
     const hasMax = Object.keys(weaponsRef.current).length >= MAX_EQUIPPED;
     const pool: string[] = [];
     Object.keys(WEAPONS).forEach(k => {
+       if (WEAPONS[k].isEvolution) return; // Do not offer evos directly
+       if (excludeList.has(k)) return; // Already synthesized
        const curLvl = weaponsRef.current[k] || 0;
        if (curLvl > 0 && curLvl < WEAPONS[k].maxLevel) pool.push(k);
        else if (curLvl === 0 && !hasMax) pool.push(k);
     });
     
     pool.sort(() => Math.random() - 0.5);
-    const selected = pool.slice(0, 3);
-    
-    setUpgradeChoices(selected.map(k => ({
+    let selected = pool.slice(0, 3).map(k => ({
        id: k,
        isNew: !weaponsRef.current[k],
        level: (weaponsRef.current[k] || 0) + 1,
        def: WEAPONS[k]
-    })));
+    }));
+    
+    // Inject evolutions as priority
+    if (evos.length > 0) {
+      selected = [...evos, ...selected].slice(0, 3);
+    }
+    
+    setUpgradeChoices(selected);
+  };
+
+  const finishGameAndSave = () => {
+    // Only save when we actually game over (or before reviving)
+    const safeTime = typeof waveTime === 'function' ? 0 : waveTime;
+    const safeScore = typeof score === 'function' ? 0 : score;
+
+    const lb = [...leaderboard, { time: safeTime, score: safeScore, date: new Date().toLocaleDateString() }];
+    lb.sort((a,b) => b.score - a.score);
+    const top5 = lb.slice(0, 5);
+    setLeaderboardState(top5);
+    saveLeaderboard(top5);
+    
+    const totalC = globalCoins + matchCoins + Math.floor(safeScore / 100);
+    setGlobalCoinsState(totalC);
+    setGlobalCoins(totalC);
+    setMatchCoins(0); // committed
   };
 
   // --- Core Game Loop ---
@@ -375,7 +552,9 @@ export default function SurvivorApp({ onBack }: { onBack: () => void }) {
         if (e.dead) { enemiesRef.current.splice(i, 1); continue; }
         const dx = p.x - e.x; const dy = p.y - e.y;
         const dist = Math.hypot(dx, dy);
-        if (dist > 0) { e.x += (dx / dist) * e.speed * dt; e.y += (dy / dist) * e.speed * dt; }
+        const currentSpeed = (e.freezeTimer && e.freezeTimer > 0) ? e.speed * 0.3 : e.speed;
+        if (dist > 0) { e.x += (dx / dist) * currentSpeed * dt; e.y += (dy / dist) * currentSpeed * dt; }
+        if (e.freezeTimer && e.freezeTimer > 0) e.freezeTimer -= dt;
         
         if (dist < e.radius + 12) {
           p.hp -= 25 * dt;
@@ -391,6 +570,21 @@ export default function SurvivorApp({ onBack }: { onBack: () => void }) {
       // 4. Update Bullets
       for (let i = bulletsRef.current.length - 1; i >= 0; i--) {
         const b = bulletsRef.current[i];
+        if (b.seeking) {
+           let nearestObj = null; let minD = Infinity;
+           for (const e of enemiesRef.current) {
+             const d = Math.hypot(e.x - b.x, e.y - b.y);
+             if (d < minD) { minD = d; nearestObj = e; }
+           }
+           if (nearestObj) {
+              const dx = nearestObj.x - b.x; const dy = nearestObj.y - b.y;
+              const mag = Math.hypot(dx, dy) || 1;
+              b.vx += (dx/mag) * 3000 * dt;
+              b.vy += (dy/mag) * 3000 * dt;
+              const speed = Math.hypot(b.vx, b.vy);
+              if (speed > 800) { b.vx = (b.vx/speed)*800; b.vy = (b.vy/speed)*800; }
+           }
+        }
         if (b.boomerang) {
           const dx = p.x - b.x; const dy = p.y - b.y;
           const mag = Math.hypot(dx, dy) || 1;
@@ -410,12 +604,16 @@ export default function SurvivorApp({ onBack }: { onBack: () => void }) {
         for (let j = enemiesRef.current.length - 1; j >= 0; j--) {
           const e = enemiesRef.current[j];
           if (Math.hypot(b.x - e.x, b.y - e.y) < e.radius + b.radius) {
+            if (b.freeze) e.freezeTimer = Math.max(e.freezeTimer || 0, b.freeze);
             if (b.dot) {
               damageEnemy(e, b.damage * dt);
             } else if (b.explosive_radius) {
               particlesRef.current.push({ id: ++entityIdRef.current, type: 'explosion', x: b.x, y: b.y, radius: b.explosive_radius, life: 0.3, maxLife: 0.3 });
               for (const ex of enemiesRef.current) {
                 if (Math.hypot(b.x - ex.x, b.y - ex.y) <= b.explosive_radius) damageEnemy(ex, b.damage);
+              }
+              if (b.spawn_poison) {
+                 bulletsRef.current.push({ id: ++entityIdRef.current, x: b.x, y: b.y, vx: 0, vy: 0, damage: b.damage * 1.5, pierce: 999, life: 2.5, color: 'rgba(163, 230, 53, 0.4)', radius: b.spawn_poison, dot: true } as Bullet);
               }
               b.life = 0; break;
             } else {
@@ -565,10 +763,14 @@ export default function SurvivorApp({ onBack }: { onBack: () => void }) {
 
   // --- Handlers ---
   const applyUpgrade = (choice: UpgradeChoice) => {
+    if (choice.isEvo && choice.consumed) {
+      delete weaponsRef.current[choice.consumed[0]];
+      delete weaponsRef.current[choice.consumed[1]];
+    }
     weaponsRef.current[choice.id] = choice.level;
     setEquippedWeapons({ ...weaponsRef.current });
-    setExp(e => e - maxExp);
-    setMaxExp(m => Math.floor(m * 1.5));
+    setExp(e => Math.max(0, e - maxExp));
+    setMaxExp(m => m + 15);
     setLevel(l => l + 1);
     setGameState('playing');
   };
@@ -580,30 +782,13 @@ export default function SurvivorApp({ onBack }: { onBack: () => void }) {
     weaponsRef.current = {}; wCooldownsRef.current = {};
     
     // Pick random starter weapon
-    const wKeys = Object.keys(WEAPONS);
+    const wKeys = Object.keys(WEAPONS).filter(k => !WEAPONS[k].isEvolution);
     const starter = wKeys[Math.floor(Math.random() * wKeys.length)];
     weaponsRef.current[starter] = 1;
 
     setEquippedWeapons({ ...weaponsRef.current });
     setScore(0); setMatchCoins(0); setLevel(1); setExp(0); setMaxExp(10); setWaveTime(0);
     setGameState('playing');
-  };
-
-  const finishGameAndSave = () => {
-    // Only save when we actually game over (or before reviving)
-    const safeTime = typeof waveTime === 'function' ? 0 : waveTime;
-    const safeScore = typeof score === 'function' ? 0 : score;
-
-    const lb = [...leaderboard, { time: safeTime, score: safeScore, date: new Date().toLocaleDateString() }];
-    lb.sort((a,b) => b.score - a.score);
-    const top5 = lb.slice(0, 5);
-    setLeaderboardState(top5);
-    saveLeaderboard(top5);
-    
-    const totalC = globalCoins + matchCoins + Math.floor(safeScore / 100);
-    setGlobalCoinsState(totalC);
-    setGlobalCoins(totalC);
-    setMatchCoins(0); // committed
   };
 
   const fullyGameOver = () => {
@@ -678,12 +863,17 @@ export default function SurvivorApp({ onBack }: { onBack: () => void }) {
                 <div style={{ background: 'rgba(0,0,0,0.6)', padding: '4px 8px', borderRadius: 8, color: '#fff', fontSize: '0.8rem', fontWeight: 'bold', border: '1px solid rgba(255,255,255,0.1)'}}>⭐ LV {level}</div>
                 <div style={{ background: 'rgba(0,0,0,0.6)', padding: '4px 8px', borderRadius: 8, color: '#fde047', fontSize: '0.8rem', fontWeight: 'bold', border: '1px solid rgba(250,204,21,0.2)'}}>🪙 {Math.round(score)} (+{matchCoins})</div>
                 <div style={{ width: '100%', breakBefore: 'always', display: 'flex', gap: 6, marginTop: 4 }}>
-                  {Object.keys(equippedWeapons).map(k => (
-                    <div key={k} style={{ background: 'rgba(0,0,0,0.6)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: 6, padding: '4px', fontSize: '1rem', width: 32, textAlign: 'center', position: 'relative' }}>
-                      {WEAPONS[k].icon}
-                      <div style={{ position: 'absolute', bottom: -5, right: -5, background: '#10b981', color: '#000', fontSize: '0.6rem', padding: '1px 4px', borderRadius: 10, fontWeight: 'bold' }}>Lv.{equippedWeapons[k]}</div>
+                  {Object.keys(equippedWeapons).map(k => {
+                    const wDef = WEAPONS[k]; if(!wDef) return null;
+                    const isMax = equippedWeapons[k] >= wDef.maxLevel;
+                    return (
+                    <div key={k} style={{ background: isMax ? 'rgba(251, 191, 36, 0.4)' : 'rgba(0,0,0,0.6)', border: `1px solid ${isMax ? '#f59e0b' : 'rgba(255,255,255,0.2)'}`, borderRadius: 6, padding: '4px', fontSize: '1rem', width: 32, textAlign: 'center', position: 'relative' }}>
+                      {wDef.icon}
+                      <div style={{ position: 'absolute', bottom: -5, right: -5, background: isMax ? '#f59e0b' : '#10b981', color: '#000', fontSize: '0.6rem', padding: '1px 4px', borderRadius: 10, fontWeight: 'bold' }}>
+                        {isMax ? 'MAX' : `Lv.${equippedWeapons[k]}`}
+                      </div>
                     </div>
-                  ))}
+                  )})}
                 </div>
               </div>
             </>
@@ -745,7 +935,7 @@ export default function SurvivorApp({ onBack }: { onBack: () => void }) {
               <h2 style={{ color: '#fde047', fontSize: '2rem', textShadow: '0 0 15px #fde047', marginBottom: 30 }}>✨ LEVEL UP! ✨</h2>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 15, width: '90%' }}>
                 {upgradeChoices.length === 0 ? (
-                  <button className="game-btn" onClick={() => { pRef.current.hp = Math.min(pRef.current.maxHp, pRef.current.hp + 50); setExp(e => e - maxExp); setMaxExp(m => Math.floor(m * 1.5)); setLevel(l=>l+1); setGameState('playing'); }} style={{ background: '#3b82f6' }}>武器已全滿，回復 50 HP！</button>
+                  <button className="game-btn" onClick={() => { pRef.current.hp = Math.min(pRef.current.maxHp, pRef.current.hp + 50); setExp(e => Math.max(0, e - maxExp)); setMaxExp(m => m + 15); setLevel(l=>l+1); setGameState('playing'); }} style={{ background: '#3b82f6' }}>武器已全滿，回復 50 HP！</button>
                 ) : upgradeChoices.map((c, idx) => (
                   <button key={idx} className="game-btn" onClick={() => applyUpgrade(c)} style={{ textAlign: 'left', display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', background: c.isNew ? 'linear-gradient(135deg, #a855f7, #6b21a8)' : 'linear-gradient(135deg, #10b981, #047857)' }}>
                     <div style={{ fontSize: '2rem' }}>{c.def.icon}</div>
