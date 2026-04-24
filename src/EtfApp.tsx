@@ -334,7 +334,7 @@ export default function EtfApp({ onBack }: { onBack: () => void }) {
               </div>
            </div>
 
-           <div style={{ flex: 1, overflowY: 'auto', display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '20px', alignContent: 'start', paddingBottom: 50 }}>
+           <div style={{ flex: 1, overflowY: 'auto', display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '20px', alignContent: 'start', paddingBottom: 100 }}>
               {watchlist.length === 0 && <div style={{ color: '#64748b', textAlign: 'center', gridColumn: '1 / -1', marginTop: 50 }}>尚無自選，請從上方搜尋新增</div>}
               
               {watchlist.map(code => {
@@ -394,7 +394,7 @@ export default function EtfApp({ onBack }: { onBack: () => void }) {
                   <button onClick={() => handleRemove(data.code)} style={{ background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', border: 'none', borderRadius: 8, padding: '8px 15px', cursor: 'pointer', fontWeight: 'bold' }}>移除</button>
                </div>
                
-               <div style={{ flex: 1, overflowY: 'auto', padding: '20px', maxWidth: '800px', margin: '0 auto', width: '100%' }}>
+               <div style={{ flex: 1, overflowY: 'auto', padding: '20px 20px 100px 20px', maxWidth: '800px', margin: '0 auto', width: '100%' }}>
                   <div style={{ marginBottom: 40 }}>
                      <h1 style={{ fontSize: '2.5rem', margin: '0 0 10px 0', color: '#f8fafc' }}>{realName} <span style={{ fontSize: '1.2rem', color: '#64748b', verticalAlign: 'middle', background: '#1e293b', padding: '4px 8px', borderRadius: 8 }}>{data.code}</span></h1>
                   </div>
