@@ -42,8 +42,36 @@ export default function ChronoShatterApp({ onBack }: { onBack: () => void }) {
   // Shatter effect
   const shatterRef = useRef<{ time: number; duration: number; type: 'glass' }>({ time: 0, duration: 0, type: 'glass' });
 
+  // Make canvas height consider mobile bottom controls
+  const isMobile = window.innerWidth <= 768;
   const canvasWidth = Math.min(window.innerWidth, 500);
-  const canvasHeight = Math.min(window.innerHeight - 80, 800);
+  const canvasHeight = Math.min(window.innerHeight - (isMobile ? 220 : 80), 800);
+
+  const handleActionDown = () => {
+       if (gameState === 'playing' && !isRecording) {
+          setIsRecording(true);
+          recordStartTimeRef.current = playTimeRef.current;
+          recordingPathRef.current = [];
+       }
+  };
+
+  const handleActionUp = () => {
+       if (gameState === 'playing') {
+          setIsRecording(false);
+          if (recordingPathRef.current.length > 5) {
+             clonesRef.current.push({
+                id: ++entityIdRef.current,
+                path: [...recordingPathRef.current],
+                startTime: playTimeRef.current,
+                maxTime: recordingPathRef.current[recordingPathRef.current.length-1].time
+             });
+          }
+          recordingPathRef.current = [];
+       }
+  };
+
+  const handleDirDown = (code: string) => { keysRef.current[code] = true; };
+  const handleDirUp = (code: string) => { keysRef.current[code] = false; };
 
   const startGame = () => {
     setGameState('playing');
@@ -63,27 +91,11 @@ export default function ChronoShatterApp({ onBack }: { onBack: () => void }) {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => { 
        keysRef.current[e.code] = true; 
-       if (e.code === 'Space' && gameState === 'playing' && !isRecording) {
-          setIsRecording(true);
-          recordStartTimeRef.current = playTimeRef.current;
-          recordingPathRef.current = [];
-       }
+       if (e.code === 'Space') handleActionDown();
     };
     const handleKeyUp = (e: KeyboardEvent) => { 
        keysRef.current[e.code] = false; 
-       if (e.code === 'Space' && gameState === 'playing') {
-          setIsRecording(false);
-          if (recordingPathRef.current.length > 5) {
-             // Spawn clone
-             clonesRef.current.push({
-                id: ++entityIdRef.current,
-                path: [...recordingPathRef.current],
-                startTime: playTimeRef.current,
-                maxTime: recordingPathRef.current[recordingPathRef.current.length-1].time
-             });
-          }
-          recordingPathRef.current = [];
-       }
+       if (e.code === 'Space') handleActionUp();
     };
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('keyup', handleKeyUp);
@@ -340,22 +352,70 @@ export default function ChronoShatterApp({ onBack }: { onBack: () => void }) {
          </div>
        )}
 
-       {gameState === 'playing' && (
-         <div style={{ position: 'relative' }}>
-           <div style={{ position: 'absolute', top: 10, left: 10, color: '#fff', zIndex: 10, fontSize: '1.2rem', textShadow: '0 0 5px #000' }}>
-              <div>HP: {Math.max(0, Math.floor(playerHp))} / 100</div>
-              <div>存活: {score} 分</div>
-              {isRecording && <div style={{ color: '#38bdf8', fontWeight: 'bold', marginTop: 10 }}>[REC] 正在錄製時間軸...</div>}
-           </div>
-           <canvas 
-             ref={canvasRef} 
-             width={canvasWidth} 
-             height={canvasHeight} 
-             style={{ background: '#000', borderRadius: 12, boxShadow: '0 0 20px rgba(0,0,0,0.5)' }}
-           />
-           <div style={{ position: 'absolute', bottom: -40, left: 0, width: '100%', textAlign: 'center', color: '#94a3b8' }}>WASD 移動 | 長按空白鍵 (SPACE) 錄製分身</div>
-         </div>
-       )}
+        {gameState === 'playing' && (
+          <div style={{ position: 'relative', width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+            <div style={{ position: 'relative' }}>
+              <div style={{ position: 'absolute', top: 10, left: 10, color: '#fff', zIndex: 10, fontSize: '1.2rem', textShadow: '0 0 5px #000', pointerEvents: 'none' }}>
+                 <div>HP: {Math.max(0, Math.floor(playerHp))} / 100</div>
+                 <div>存活: {score} 分</div>
+                 {isRecording && <div style={{ color: '#38bdf8', fontWeight: 'bold', marginTop: 10 }}>[REC] 正在錄製時間軸...</div>}
+              </div>
+              <canvas 
+                ref={canvasRef} 
+                width={canvasWidth} 
+                height={canvasHeight} 
+                style={{ background: '#000', borderRadius: 12, boxShadow: '0 0 20px rgba(0,0,0,0.5)' }}
+              />
+            </div>
+            
+            {!isMobile && <div style={{ width: '100%', textAlign: 'center', color: '#94a3b8', marginTop: 10 }}>WASD 移動 | 長按空白鍵 (SPACE) 錄製分身</div>}
+            
+            {/* Mobile Virtual Controls */}
+            {isMobile && (
+              <div style={{ display: 'flex', width: canvasWidth, justifyContent: 'space-between', alignItems: 'center', marginTop: 15, padding: '0 10px', boxSizing: 'border-box', userSelect: 'none', WebkitUserSelect: 'none', touchAction: 'none' }}>
+                 {/* D-PAD */}
+                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 50px)', gridTemplateRows: 'repeat(3, 50px)', gap: 5 }}>
+                    <div />
+                    <button 
+                      onTouchStart={(e) => { e.preventDefault(); handleDirDown('KeyW') }} onTouchEnd={(e) => { e.preventDefault(); handleDirUp('KeyW') }}
+                      onMouseDown={() => handleDirDown('KeyW')} onMouseUp={() => handleDirUp('KeyW')} onMouseLeave={() => handleDirUp('KeyW')}
+                      style={{ background: '#27272a', border: '1px solid #3f3f46', borderRadius: 8, color: '#a1a1aa', fontWeight: 'bold', fontSize: '1.2rem' }}>W</button>
+                    <div />
+                    <button 
+                      onTouchStart={(e) => { e.preventDefault(); handleDirDown('KeyA') }} onTouchEnd={(e) => { e.preventDefault(); handleDirUp('KeyA') }}
+                      onMouseDown={() => handleDirDown('KeyA')} onMouseUp={() => handleDirUp('KeyA')} onMouseLeave={() => handleDirUp('KeyA')}
+                      style={{ background: '#27272a', border: '1px solid #3f3f46', borderRadius: 8, color: '#a1a1aa', fontWeight: 'bold', fontSize: '1.2rem' }}>A</button>
+                    <button 
+                      onTouchStart={(e) => { e.preventDefault(); handleDirDown('KeyS') }} onTouchEnd={(e) => { e.preventDefault(); handleDirUp('KeyS') }}
+                      onMouseDown={() => handleDirDown('KeyS')} onMouseUp={() => handleDirUp('KeyS')} onMouseLeave={() => handleDirUp('KeyS')}
+                      style={{ background: '#27272a', border: '1px solid #3f3f46', borderRadius: 8, color: '#a1a1aa', fontWeight: 'bold', fontSize: '1.2rem' }}>S</button>
+                    <button 
+                      onTouchStart={(e) => { e.preventDefault(); handleDirDown('KeyD') }} onTouchEnd={(e) => { e.preventDefault(); handleDirUp('KeyD') }}
+                      onMouseDown={() => handleDirDown('KeyD')} onMouseUp={() => handleDirUp('KeyD')} onMouseLeave={() => handleDirUp('KeyD')}
+                      style={{ background: '#27272a', border: '1px solid #3f3f46', borderRadius: 8, color: '#a1a1aa', fontWeight: 'bold', fontSize: '1.2rem' }}>D</button>
+                 </div>
+                 
+                 {/* Action Button */}
+                 <button 
+                    onTouchStart={(e) => { e.preventDefault(); handleActionDown() }} 
+                    onTouchEnd={(e) => { e.preventDefault(); handleActionUp() }}
+                    onMouseDown={() => handleActionDown()}
+                    onMouseUp={() => handleActionUp()}
+                    onMouseLeave={() => handleActionUp()}
+                    style={{ 
+                      width: 80, height: 80, borderRadius: '50%', 
+                      background: 'radial-gradient(circle, #a855f7 0%, #7e22ce 100%)', 
+                      border: '4px solid #c084fc', color: '#fff', fontWeight: 'bold', fontSize: '1.2rem',
+                      boxShadow: '0 0 15px rgba(168, 85, 247, 0.8)'
+                    }}
+                 >
+                    SPLIT
+                 </button>
+              </div>
+            )}
+            
+          </div>
+        )}
 
        {gameState === 'gameover' && (
          <div style={{ position: 'relative' }}>

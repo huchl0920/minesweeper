@@ -4,6 +4,8 @@ interface Props {
   onAppClick: (appId: string) => void;
 }
 
+const releaseVersion = "v2026.04.24.1625";
+
 export default function Home({ onAppClick }: Props) {
   // Current time display for a nice dashboard feel
   const now = new Date();
@@ -75,6 +77,21 @@ export default function Home({ onAppClick }: Props) {
             </div>
             <span className="app-label" style={{ fontWeight: 'bold' }}>台股ETF</span>
           </div>
+        </div>
+        
+        {/* Version Display */}
+        <div style={{
+          position: 'absolute',
+          bottom: '20px',
+          left: '0',
+          right: '0',
+          textAlign: 'center',
+          color: '#475569',
+          fontSize: '0.8rem',
+          letterSpacing: '1px',
+          pointerEvents: 'none'
+        }}>
+          VERSION {releaseVersion}
         </div>
       </div>
     </div>
