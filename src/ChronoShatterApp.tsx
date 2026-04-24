@@ -48,7 +48,7 @@ export default function ChronoShatterApp({ onBack }: { onBack: () => void }) {
   // Make canvas height consider mobile bottom controls
   const isMobile = window.innerWidth <= 768;
   const canvasWidth = Math.min(window.innerWidth, 500);
-  const canvasHeight = Math.min(window.innerHeight - (isMobile ? 220 : 80), 800);
+  const canvasHeight = Math.min(window.innerHeight - (isMobile ? 280 : 80), 800);
 
   const handleActionDown = () => {
        if (gameState === 'playing' && !isRecording) {
@@ -406,7 +406,7 @@ export default function ChronoShatterApp({ onBack }: { onBack: () => void }) {
             
             {/* Mobile Virtual Controls */}
             {isMobile && (
-              <div style={{ display: 'flex', width: canvasWidth, justifyContent: 'space-between', alignItems: 'center', marginTop: 15, padding: '0 20px', boxSizing: 'border-box', userSelect: 'none', WebkitUserSelect: 'none', touchAction: 'none' }}>
+              <div style={{ display: 'flex', width: canvasWidth, justifyContent: 'space-between', alignItems: 'center', marginTop: 15, padding: '0 20px', paddingBottom: '50px', boxSizing: 'border-box', userSelect: 'none', WebkitUserSelect: 'none', touchAction: 'none' }}>
                  {/* Virtual Joystick */}
                  <div 
                     ref={joystickBaseRef}

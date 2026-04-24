@@ -12,12 +12,17 @@ interface StockData {
   high: number;
   low: number;
   volume: number;
-  instData: { fNet: string; iNet: string; dNet: string; totalNet: string } | null;
+  instData: { name: string; fNet: string; iNet: string; dNet: string; totalNet: string } | null;
+}
+
+interface TwseEtfInfo {
+  name: string;
+  nav: number;
 }
 
 const getWatchlist = (): string[] => {
-   try { return JSON.parse(localStorage.getItem('stock_watchlist') || '["2330", "0050", "2317"]'); }
-   catch { return ['2330', '0050', '2317']; }
+   try { return JSON.parse(localStorage.getItem('stock_watchlist') || '["2330", "0050"]'); }
+   catch { return ['2330', '0050']; }
 };
 const saveWatchlist = (wl: string[]) => localStorage.setItem('stock_watchlist', JSON.stringify(wl));
 
@@ -144,12 +149,36 @@ export default function EtfApp({ onBack }: { onBack: () => void }) {
   const [searchQuery, setSearchQuery] = useState('');
   
   const [searchSuggestions, setSearchSuggestions] = useState<{code:string, name: string}[]>([]);
-  const [t86Record, setT86Record] = useState<Record<string, { fNet: string, iNet: string, dNet: string, totalNet: string }>>({});
+  const [t86Record, setT86Record] = useState<Record<string, { name: string, fNet: string, iNet: string, dNet: string, totalNet: string }>>({});
+  const [twseEtfRecord, setTwseEtfRecord] = useState<Record<string, TwseEtfInfo>>({});
   
   const [viewMode, setViewMode] = useState<'list' | 'detail'>('list');
   const [selectedCode, setSelectedCode] = useState<string | null>(null);
   const [loadingCode, setLoadingCode] = useState<string | null>(null);
   const [showSuggestions, setShowSuggestions] = useState(false);
+  
+  // TWSE ETF Data (For Chinese Name + NAV)
+  useEffect(() => {
+    const fetchTwse = async () => {
+       try {
+         const res = await fetch(`/api/twse/stock/data/all_etf.txt`);
+         const text = await res.text();
+         if(text.startsWith('<')) return;
+         const raw = JSON.parse(text);
+         if(raw.a1) {
+            const record: Record<string, TwseEtfInfo> = {};
+            const all = [...raw.a1.flatMap((x: any) => x.msgArray || [])];
+            all.forEach((item: any) => {
+               if (item.a) {
+                   record[item.a] = { name: item.b, nav: parseFloat(item.f) || 0 };
+               }
+            });
+            setTwseEtfRecord(record);
+         }
+       } catch(e) {}
+    };
+    fetchTwse();
+  }, []);
   
   // T86 Institutions EOD Data (TWSE Only)
   useEffect(() => {
@@ -169,6 +198,7 @@ export default function EtfApp({ onBack }: { onBack: () => void }) {
                
                j.data.forEach((row: string[]) => {
                   record[row[0]] = {
+                     name: row[1]?.trim() || '',
                      fNet: idxOuter >= 0 ? row[idxOuter] : '0',
                      iNet: idxTrust >= 0 ? row[idxTrust] : '0',
                      dNet: idxDealer >= 0 ? row[idxDealer] : '0',
@@ -199,7 +229,11 @@ export default function EtfApp({ onBack }: { onBack: () => void }) {
               if (j.quotes) {
                   const resList = j.quotes
                       .filter((q: any) => (q.exchange === 'TAI' || q.exchange === 'TWO') && (q.quoteType === 'EQUITY' || q.quoteType === 'ETF'))
-                      .map((q: any) => ({ code: q.symbol.replace(/\.TW|\.TWO/g, ''), name: q.shortname || q.longname || q.symbol }));
+                      .map((q: any) => {
+                          const code = q.symbol.replace(/\.TW|\.TWO/g, '');
+                          const resolvedName = twseEtfRecord[code]?.name || t86Record[code]?.name || q.shortname || q.longname || code;
+                          return { code, name: resolvedName };
+                      });
                   setSearchSuggestions(resList);
               }
           } catch(e) {}
@@ -207,7 +241,7 @@ export default function EtfApp({ onBack }: { onBack: () => void }) {
       return () => clearTimeout(timeoutId);
   }, [searchQuery]);
 
-  const fetchStockInfo = async (rawCode: string) => {
+  const fetchStockInfo = async (rawCode: string, overrideName?: string) => {
     const code = rawCode.toUpperCase();
     try {
       setLoadingCode(code);
@@ -242,12 +276,12 @@ export default function EtfApp({ onBack }: { onBack: () => void }) {
           }
       }
       
-      const yahooName = meta.longName || meta.shortName || `Stock ${code}`;
+      const resolvedName = overrideName || twseEtfRecord[code]?.name || t86Record[code]?.name || meta.longName || meta.shortName || `Stock ${code}`;
       const realPreviousClose = history.length > 1 ? history[history.length - 2].price : meta.regularMarketPrice;
 
       const dataObj: StockData = {
         code,
-        name: yahooName,
+        name: resolvedName,
         price: meta.regularMarketPrice,
         previousClose: realPreviousClose,
         history,
@@ -276,10 +310,17 @@ export default function EtfApp({ onBack }: { onBack: () => void }) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [watchlist]);
 
-  const handleAdd = async (inputCode?: string) => {
+  const handleAdd = async (inputCode?: string, overrideName?: string) => {
     const code = (inputCode || searchQuery).trim().toUpperCase();
     if (!code) return;
-    const data = await fetchStockInfo(code);
+    
+    let finalName = overrideName;
+    if (!finalName) {
+        const match = searchSuggestions.find(s => s.code === code);
+        if (match) finalName = match.name;
+    }
+    
+    const data = await fetchStockInfo(code, finalName);
     if (!data) {
       alert(`找不到代碼 ${code} 的資料`);
       return;
@@ -336,7 +377,7 @@ export default function EtfApp({ onBack }: { onBack: () => void }) {
                       <div style={{ position: 'absolute', top: '100%', left: 0, width: '100%', background: '#1e293b', border: '1px solid #334155', borderRadius: 12, marginTop: 5, zIndex: 50, overflow: 'hidden', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.5)' }}>
                          {searchSuggestions.map((info) => (
                            <div key={info.code} 
-                                onMouseDown={() => handleAdd(info.code)}
+                                onMouseDown={() => handleAdd(info.code, info.name)}
                                 style={{ padding: '10px 15px', cursor: 'pointer', borderBottom: '1px solid #0f172a', transition: 'background 0.2s' }}
                                 onMouseEnter={e => e.currentTarget.style.background = '#334155'}
                                 onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
@@ -411,8 +452,11 @@ export default function EtfApp({ onBack }: { onBack: () => void }) {
          // In case the T86 record finished loading AFTER the stock object was stored, we can patch it in render directly!
          const lateInstData = t86Record[data.code] || data.instData; 
          
+         const isEtf = !!twseEtfRecord[data.code];
+         const nav = isEtf && twseEtfRecord[data.code].nav > 0 ? twseEtfRecord[data.code].nav : data.price;
+         
          const isUp = (data.price - data.previousClose) >= 0;
-         const formatVol = (v: number) => (v / 1000).toLocaleString(undefined, {maximumFractionDigits: 0}) + ' 萬股';
+         const formatVol = (v: number) => (v / 1000).toLocaleString(undefined, {maximumFractionDigits: 0}) + ' 張';
          const formatNum = (strNum: string) => {
             const val = parseInt(strNum.replace(/,/g, ''), 10);
             if (isNaN(val)) return '0 張';
@@ -456,12 +500,26 @@ export default function EtfApp({ onBack }: { onBack: () => void }) {
                         <div style={{ color: '#94a3b8', fontSize: '0.85rem', marginBottom: 5 }}>總名目成交量</div>
                         <div style={{ fontSize: '1.5rem', fontWeight: 'bold', color: '#38bdf8' }}>{formatVol(data.volume)}</div>
                      </div>
-                     <div style={{ background: '#1e293b', padding: '15px', borderRadius: '16px', border: '1px dashed #475569' }}>
+                     <div style={{ background: '#1e293b', padding: '15px', borderRadius: '16px', border: '1px solid #334155' }}>
                         <div style={{ color: '#94a3b8', fontSize: '0.85rem', marginBottom: 5 }}>單日漲跌幅</div>
                         <div style={{ fontSize: '1.5rem', fontWeight: 'bold', color: isUp ? '#ef4444' : '#22c55e' }}>
                            {(((data.price / data.previousClose) - 1) * 100).toFixed(2)}%
                         </div>
                      </div>
+                     {isEtf && (
+                        <>
+                           <div style={{ background: '#1e293b', padding: '15px', borderRadius: '16px', border: '1px dashed #475569' }}>
+                              <div style={{ color: '#94a3b8', fontSize: '0.85rem', marginBottom: 5 }}>最新即時淨值</div>
+                              <div style={{ fontSize: '1.5rem', fontWeight: 'bold', color: '#cbd5e1' }}>{nav === data.price ? '無資料' : nav.toFixed(2)}</div>
+                           </div>
+                           <div style={{ background: '#1e293b', padding: '15px', borderRadius: '16px', border: '1px dashed #475569' }}>
+                              <div style={{ color: '#94a3b8', fontSize: '0.85rem', marginBottom: 5 }}>折溢價</div>
+                              <div style={{ fontSize: '1.5rem', fontWeight: 'bold', color: nav !== data.price && data.price > nav ? '#ef4444' : '#22c55e' }}>
+                                 {nav === data.price ? '-' : (((data.price / nav) - 1) * 100).toFixed(2) + '%'}
+                              </div>
+                           </div>
+                        </>
+                     )}
                   </div>
 
                   {/* Institutional Investors (三大法人) */}
