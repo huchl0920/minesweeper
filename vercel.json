@@ -5,6 +5,10 @@
       "destination": "https://mis.twse.com.tw/:path*"
     },
     {
+      "source": "/api/twse_www/:path*",
+      "destination": "https://www.twse.com.tw/:path*"
+    },
+    {
       "source": "/api/yahoo/:path*",
       "destination": "https://query1.finance.yahoo.com/:path*"
     },

@@ -1,28 +1,25 @@
 import { useState, useEffect, useRef } from 'react';
 
 // --- Data Fetching Logic ---
-interface EtfData {
+interface StockData {
   code: string;
   name: string;
   price: number;
   previousClose: number;
   history: { price: number; time: number }[]; 
   currency: string;
+  open: number;
+  high: number;
+  low: number;
   volume: number;
-  nav: number; // default from Yahoo if TWSE fails
-}
-
-interface TwseEtfInfo {
-  name: string;
-  nav: number;
-  premium: number;
+  instData: { fNet: string; iNet: string; dNet: string; totalNet: string } | null;
 }
 
 const getWatchlist = (): string[] => {
-   try { return JSON.parse(localStorage.getItem('etf_watchlist') || '["0050", "0056", "00878"]'); }
-   catch { return ['0050', '0056', '00878']; }
+   try { return JSON.parse(localStorage.getItem('stock_watchlist') || '["2330", "0050", "2317"]'); }
+   catch { return ['2330', '0050', '2317']; }
 };
-const saveWatchlist = (wl: string[]) => localStorage.setItem('etf_watchlist', JSON.stringify(wl));
+const saveWatchlist = (wl: string[]) => localStorage.setItem('stock_watchlist', JSON.stringify(wl));
 
 function TrendChart({ data }: { data: { price: number; time: number }[] }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -143,61 +140,89 @@ function TrendChart({ data }: { data: { price: number; time: number }[] }) {
 
 export default function EtfApp({ onBack }: { onBack: () => void }) {
   const [watchlist, setWatchlist] = useState<string[]>(getWatchlist());
-  const [etfDataMap, setEtfDataMap] = useState<Record<string, EtfData | null>>({});
+  const [stockDataMap, setStockDataMap] = useState<Record<string, StockData | null>>({});
   const [searchQuery, setSearchQuery] = useState('');
   
-  // Real-time TWSE ETF database fetched on mount
-  const [twseEtfRecord, setTwseEtfRecord] = useState<Record<string, TwseEtfInfo>>({});
+  const [searchSuggestions, setSearchSuggestions] = useState<{code:string, name: string}[]>([]);
+  const [t86Record, setT86Record] = useState<Record<string, { fNet: string, iNet: string, dNet: string, totalNet: string }>>({});
   
   const [viewMode, setViewMode] = useState<'list' | 'detail'>('list');
   const [selectedCode, setSelectedCode] = useState<string | null>(null);
   const [loadingCode, setLoadingCode] = useState<string | null>(null);
   const [showSuggestions, setShowSuggestions] = useState(false);
   
+  // T86 Institutions EOD Data (TWSE Only)
   useEffect(() => {
-    const fetchTwse = async () => {
-       try {
-         const res = await fetch(`/api/twse/stock/data/all_etf.txt`);
-         const raw = await res.json();
-         if(raw.a1) {
-            const record: Record<string, TwseEtfInfo> = {};
-            const all = [...raw.a1.flatMap((x: any) => x.msgArray || [])];
-            all.forEach((item: any) => {
-               if (item.a) {
-                   record[item.a] = {
-                      name: item.b,
-                      nav: parseFloat(item.f) || 0,
-                      premium: parseFloat(item.g) || 0
-                   };
-               }
-            });
-            setTwseEtfRecord(record);
+    const fetchT86 = async () => {
+         try {
+            const res = await fetch(`/api/twse_www/fund/T86?response=json&selectType=ALL`);
+            const text = await res.text();
+            // Just in case it's HTML due to 403 Forbidden on Vercel
+            if(text.startsWith('<')) return;
+            const j = JSON.parse(text);
+            if(j.data && j.fields) {
+               const record: Record<string, any> = {};
+               const idxOuter = j.fields.indexOf('外陸資買賣超股數(不含外資自營商)');
+               const idxTrust = j.fields.indexOf('投信買賣超股數');
+               const idxDealer = j.fields.indexOf('自營商買賣超股數'); 
+               const idxTotal = j.fields.indexOf('三大法人買賣超股數');
+               
+               j.data.forEach((row: string[]) => {
+                  record[row[0]] = {
+                     fNet: idxOuter >= 0 ? row[idxOuter] : '0',
+                     iNet: idxTrust >= 0 ? row[idxTrust] : '0',
+                     dNet: idxDealer >= 0 ? row[idxDealer] : '0',
+                     totalNet: idxTotal >= 0 ? row[idxTotal] : '0',
+                  };
+               });
+               setT86Record(record);
+            }
+         } catch(e) {
+            console.warn("TWSE T86 skipped or blocked", e);
          }
-       } catch(e) {
-         console.warn("Failed to fetch TWSE ETF list", e);
-       }
     };
-    fetchTwse();
+    fetchT86();
   }, []);
 
-  const suggestions = Object.entries(twseEtfRecord).filter(([code, info]) => 
-     searchQuery.length > 0 && (code.includes(searchQuery.toUpperCase()) || info.name.includes(searchQuery))
-  ).slice(0, 10); // Display up to 10 suggestions
+  // Dynamic Yahoo Search Autocomplete
+  useEffect(() => {
+      if (searchQuery.trim().length === 0) {
+          setSearchSuggestions([]);
+          return;
+      }
+      const timeoutId = setTimeout(async () => {
+          try {
+              const res = await fetch(`/api/yahoo/v1/finance/search?q=${encodeURIComponent(searchQuery)}&quotesCount=10`);
+              const text = await res.text();
+              if(text.startsWith('<')) return; // Vercel 403 handle
+              const j = JSON.parse(text);
+              if (j.quotes) {
+                  const resList = j.quotes
+                      .filter((q: any) => (q.exchange === 'TAI' || q.exchange === 'TWO') && (q.quoteType === 'EQUITY' || q.quoteType === 'ETF'))
+                      .map((q: any) => ({ code: q.symbol.replace(/\.TW|\.TWO/g, ''), name: q.shortname || q.longname || q.symbol }));
+                  setSearchSuggestions(resList);
+              }
+          } catch(e) {}
+      }, 300);
+      return () => clearTimeout(timeoutId);
+  }, [searchQuery]);
 
-  const fetchEtfInfo = async (rawCode: string) => {
+  const fetchStockInfo = async (rawCode: string) => {
     const code = rawCode.toUpperCase();
     try {
       setLoadingCode(code);
       
       let symbol = `${code}.TW`;
       let res = await fetch(`/api/yahoo/v8/finance/chart/${symbol}?range=1mo&interval=1d`);
-      let json = await res.json();
+      let text = await res.text();
+      let json = text.startsWith('<') ? {chart:{result:null, error:'Vite Fallback or 403 HTML'}} : JSON.parse(text);
       
-      // Fallback for Taipei Exchange (OTC) ETFs
-      if (!json.chart.result || json.chart.error !== null) {
+      // Fallback for Taipei Exchange (OTC) ETFs/Stocks
+      if (!json.chart || !json.chart.result || json.chart.error !== null) {
           symbol = `${code}.TWO`;
           res = await fetch(`/api/yahoo/v8/finance/chart/${symbol}?range=1mo&interval=1d`);
-          json = await res.json();
+          text = await res.text();
+          json = text.startsWith('<') ? {chart:{result:null, error:'Vite Fallback or 403 HTML'}} : JSON.parse(text);
       }
       
       const result = json.chart?.result?.[0];
@@ -217,22 +242,24 @@ export default function EtfApp({ onBack }: { onBack: () => void }) {
           }
       }
       
-      // Use Yahoo API's longName or shortName as the baseline fallback
-      const yahooName = meta.longName || meta.shortName || `ETF ${code}`;
+      const yahooName = meta.longName || meta.shortName || `Stock ${code}`;
       const realPreviousClose = history.length > 1 ? history[history.length - 2].price : meta.regularMarketPrice;
 
-      const dataObj: EtfData = {
+      const dataObj: StockData = {
         code,
         name: yahooName,
         price: meta.regularMarketPrice,
         previousClose: realPreviousClose,
         history,
         currency: meta.currency,
+        open: meta.regularMarketOpen || meta.regularMarketPrice,
+        high: meta.regularMarketDayHigh || meta.regularMarketPrice,
+        low: meta.regularMarketDayLow || meta.regularMarketPrice,
         volume: meta.regularMarketVolume || 0,
-        nav: meta.regularMarketPrice // Used as last resort if TWSE DB misses it
+        instData: t86Record[code] || null
       };
       
-      setEtfDataMap(prev => ({...prev, [code]: dataObj}));
+      setStockDataMap(prev => ({...prev, [code]: dataObj}));
       return dataObj;
     } catch (err) {
       console.error(err);
@@ -244,7 +271,7 @@ export default function EtfApp({ onBack }: { onBack: () => void }) {
 
   useEffect(() => {
     watchlist.forEach(code => {
-      if (!etfDataMap[code]) fetchEtfInfo(code);
+      if (!stockDataMap[code]) fetchStockInfo(code);
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [watchlist]);
@@ -252,12 +279,13 @@ export default function EtfApp({ onBack }: { onBack: () => void }) {
   const handleAdd = async (inputCode?: string) => {
     const code = (inputCode || searchQuery).trim().toUpperCase();
     if (!code) return;
-    const data = await fetchEtfInfo(code);
+    const data = await fetchStockInfo(code);
     if (!data) {
       alert(`找不到代碼 ${code} 的資料`);
       return;
     }
     setSearchQuery('');
+    setSearchSuggestions([]);
     setShowSuggestions(false);
     if (!watchlist.includes(code)) {
       const newWl = [...watchlist, code];
@@ -278,7 +306,8 @@ export default function EtfApp({ onBack }: { onBack: () => void }) {
     setViewMode('detail');
   };
 
-  const currentSelectedYahooData = selectedCode ? etfDataMap[selectedCode] : null;
+  // Assign the fetched detail to variables and patch in any late-arriving T86 records
+  const currentSelectedData = selectedCode ? stockDataMap[selectedCode] : null;
 
   return (
     <div style={{ width: '100vw', height: '100vh', background: '#0f172a', color: '#f8fafc', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
@@ -289,13 +318,13 @@ export default function EtfApp({ onBack }: { onBack: () => void }) {
            <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', marginBottom: 30, gap: 15 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 15 }}>
                  <button onClick={onBack} style={{ background: '#1e293b', border: '1px solid #334155', color: '#38bdf8', borderRadius: 8, padding: '8px 15px', cursor: 'pointer', fontWeight: 'bold' }}>{"< 退出"}</button>
-                 <h1 style={{ margin: 0, fontSize: '1.5rem' }}>📈 台股ETF觀察機</h1>
+                 <h1 style={{ margin: 0, fontSize: '1.5rem' }}>📈 台股報價</h1>
               </div>
               <div style={{ display: 'flex', gap: 10, flex: '1 1 300px' }}>
                  <div style={{ position: 'relative', flex: 1 }}>
                     <input 
                       type="text" 
-                      placeholder="輸入代碼或名稱新增 (例 0050)" 
+                      placeholder="輸入代碼或名稱新增 (例 2330 / 台積電)" 
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
                       onFocus={() => setShowSuggestions(true)}
@@ -305,24 +334,24 @@ export default function EtfApp({ onBack }: { onBack: () => void }) {
                     />
                     {showSuggestions && searchQuery.trim().length > 0 && (
                       <div style={{ position: 'absolute', top: '100%', left: 0, width: '100%', background: '#1e293b', border: '1px solid #334155', borderRadius: 12, marginTop: 5, zIndex: 50, overflow: 'hidden', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.5)' }}>
-                         {suggestions.map(([code, info]) => (
-                           <div key={code} 
-                                onMouseDown={() => handleAdd(code)}
+                         {searchSuggestions.map((info) => (
+                           <div key={info.code} 
+                                onMouseDown={() => handleAdd(info.code)}
                                 style={{ padding: '10px 15px', cursor: 'pointer', borderBottom: '1px solid #0f172a', transition: 'background 0.2s' }}
                                 onMouseEnter={e => e.currentTarget.style.background = '#334155'}
                                 onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
                            >
-                              <b style={{ color: '#38bdf8', marginRight: 10 }}>{code}</b> {info.name}
+                              <b style={{ color: '#38bdf8', marginRight: 10 }}>{info.code}</b> {info.name}
                            </div>
                          ))}
                          
-                         {!twseEtfRecord[searchQuery.trim().toUpperCase()] && (
+                         {searchSuggestions.length === 0 && (
                              <div onMouseDown={() => handleAdd()}
-                                  style={{ padding: '10px 15px', cursor: 'pointer', color: '#94a3b8', borderTop: suggestions.length > 0 ? '1px dashed #334155' : 'none', transition: 'background 0.2s' }}
+                                  style={{ padding: '10px 15px', cursor: 'pointer', color: '#94a3b8', transition: 'background 0.2s' }}
                                   onMouseEnter={e => e.currentTarget.style.background = '#334155'}
                                   onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
                              >
-                                🔍 嘗試線上尋找 <b style={{ color: '#fff' }}>{searchQuery.trim().toUpperCase()}</b>
+                                🔍 嘗試線上強制尋找 <b style={{ color: '#fff' }}>{searchQuery.trim().toUpperCase()}</b>
                              </div>
                          )}
                       </div>
@@ -335,20 +364,16 @@ export default function EtfApp({ onBack }: { onBack: () => void }) {
            </div>
 
            <div style={{ flex: 1, overflowY: 'auto', display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '20px', alignContent: 'start', paddingBottom: 100 }}>
-              {watchlist.length === 0 && <div style={{ color: '#64748b', textAlign: 'center', gridColumn: '1 / -1', marginTop: 50 }}>尚無自選，請從上方搜尋新增</div>}
+              {watchlist.length === 0 && <div style={{ color: '#64748b', textAlign: 'center', gridColumn: '1 / -1', marginTop: 50 }}>尚無自選，請從上方搜尋代碼或名稱新增</div>}
               
               {watchlist.map(code => {
-                const data = etfDataMap[code];
+                const data = stockDataMap[code];
                 if (loadingCode === code && !data) {
                    return <div key={code} style={{ background: '#1e293b', padding: 20, borderRadius: 16, height: 120, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#64748b' }}>載入中...</div>
                 }
                 if (!data) {
                    return <div key={code} style={{ background: '#1e293b', padding: 20, borderRadius: 16, color: '#ef4444' }}>載入失敗: {code} <button onClick={() => handleRemove(code)} style={{float:'right', color:'#ef4444', background:'none', border:'none'}}>移除</button></div>
                 }
-
-                // Dynamic binding from TWSE overrides
-                const twseInfo = twseEtfRecord[code];
-                const realName = twseInfo?.name || data.name;
 
                 const diff = data.price - data.previousClose;
                 const isUp = diff >= 0;
@@ -362,7 +387,7 @@ export default function EtfApp({ onBack }: { onBack: () => void }) {
                   >
                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '15px' }}>
                         <div>
-                           <div style={{ fontSize: '1.2rem', fontWeight: 'bold', marginBottom: 4 }}>{realName}</div>
+                           <div style={{ fontSize: '1.2rem', fontWeight: 'bold', marginBottom: 4 }}>{data.name}</div>
                            <div style={{ color: '#94a3b8', fontSize: '0.9rem' }}>{code}</div>
                         </div>
                         <button onClick={(e) => { e.stopPropagation(); handleRemove(code); }} style={{ background: 'transparent', border:'none', color:'#475569', fontSize: '1.5rem', cursor: 'pointer' }}>×</button>
@@ -381,12 +406,20 @@ export default function EtfApp({ onBack }: { onBack: () => void }) {
       )}
 
       {/* Detail View */}
-      {viewMode === 'detail' && currentSelectedYahooData && (() => {
-         const data = currentSelectedYahooData;
-         const twseInfo = twseEtfRecord[data.code];
-         const realName = twseInfo?.name || data.name;
-         const nav = twseInfo && twseInfo.nav > 0 ? twseInfo.nav : data.nav;
+      {viewMode === 'detail' && currentSelectedData && (() => {
+         const data = currentSelectedData;
+         // In case the T86 record finished loading AFTER the stock object was stored, we can patch it in render directly!
+         const lateInstData = t86Record[data.code] || data.instData; 
          
+         const isUp = (data.price - data.previousClose) >= 0;
+         const formatVol = (v: number) => (v / 1000).toLocaleString(undefined, {maximumFractionDigits: 0}) + ' 萬股';
+         const formatNum = (strNum: string) => {
+            const val = parseInt(strNum.replace(/,/g, ''), 10);
+            if (isNaN(val)) return '0 張';
+            const shares = val / 1000;
+            return shares > 0 ? `+${shares.toLocaleString(undefined, {maximumFractionDigits: 0})} 張` : `${shares.toLocaleString(undefined, {maximumFractionDigits: 0})} 張`;
+         };
+
          return (
             <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', background: '#0f172a' }}>
                <div style={{ padding: '20px', borderBottom: '1px solid #1e293b', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -395,40 +428,72 @@ export default function EtfApp({ onBack }: { onBack: () => void }) {
                </div>
                
                <div style={{ flex: 1, overflowY: 'auto', padding: '20px 20px 100px 20px', maxWidth: '800px', margin: '0 auto', width: '100%' }}>
-                  <div style={{ marginBottom: 40 }}>
-                     <h1 style={{ fontSize: '2.5rem', margin: '0 0 10px 0', color: '#f8fafc' }}>{realName} <span style={{ fontSize: '1.2rem', color: '#64748b', verticalAlign: 'middle', background: '#1e293b', padding: '4px 8px', borderRadius: 8 }}>{data.code}</span></h1>
+                  <div style={{ marginBottom: 30 }}>
+                     <h1 style={{ fontSize: '2.5rem', margin: '0 0 10px 0', color: '#f8fafc' }}>
+                        {data.name} <span style={{ fontSize: '1.2rem', color: '#64748b', verticalAlign: 'middle', background: '#1e293b', padding: '4px 8px', borderRadius: 8 }}>{data.code}</span>
+                     </h1>
                   </div>
 
-                  {/* Data Cards (Responsive Grid) */}
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '15px', marginBottom: '40px' }}>
-                     <div style={{ background: '#1e293b', padding: '20px', borderRadius: '16px', border: '1px solid #334155' }}>
-                        <div style={{ color: '#94a3b8', fontSize: '0.9rem', marginBottom: 10 }}>市價</div>
-                        <div style={{ fontSize: '2.5rem', fontWeight: 'bold', color: '#fff' }}>{data.price.toFixed(2)}</div>
+                  {/* Pricing Overview Cards */}
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '15px', marginBottom: '30px' }}>
+                     <div style={{ background: '#1e293b', padding: '15px', borderRadius: '16px', border: '1px solid #334155' }}>
+                        <div style={{ color: '#94a3b8', fontSize: '0.85rem', marginBottom: 5 }}>收盤價</div>
+                        <div style={{ fontSize: '2rem', fontWeight: 'bold', color: isUp ? '#ef4444' : '#22c55e' }}>{data.price.toFixed(2)}</div>
                      </div>
-                     <div style={{ background: '#1e293b', padding: '20px', borderRadius: '16px', border: '1px solid #334155' }}>
-                        <div style={{ color: '#94a3b8', fontSize: '0.9rem', marginBottom: 10 }}>昨日收盤</div>
-                        <div style={{ fontSize: '2rem', fontWeight: 'bold', color: '#cbd5e1' }}>{data.previousClose.toFixed(2)}</div>
+                     <div style={{ background: '#1e293b', padding: '15px', borderRadius: '16px', border: '1px solid #334155' }}>
+                        <div style={{ color: '#94a3b8', fontSize: '0.85rem', marginBottom: 5 }}>開盤價</div>
+                        <div style={{ fontSize: '1.5rem', fontWeight: 'bold', color: '#cbd5e1' }}>{data.open.toFixed(2)}</div>
                      </div>
-                     <div style={{ background: '#1e293b', padding: '20px', borderRadius: '16px', border: '1px solid #334155' }}>
-                        <div style={{ color: '#94a3b8', fontSize: '0.9rem', marginBottom: 10 }}>單日漲跌幅</div>
-                        <div style={{ fontSize: '2rem', fontWeight: 'bold', color: (data.price - data.previousClose) >= 0 ? '#ef4444' : '#22c55e' }}>
+                     <div style={{ background: '#1e293b', padding: '15px', borderRadius: '16px', border: '1px solid #334155' }}>
+                        <div style={{ color: '#94a3b8', fontSize: '0.85rem', marginBottom: 5 }}>最高價</div>
+                        <div style={{ fontSize: '1.5rem', fontWeight: 'bold', color: '#ef4444' }}>{data.high.toFixed(2)}</div>
+                     </div>
+                     <div style={{ background: '#1e293b', padding: '15px', borderRadius: '16px', border: '1px solid #334155' }}>
+                        <div style={{ color: '#94a3b8', fontSize: '0.85rem', marginBottom: 5 }}>最低價</div>
+                        <div style={{ fontSize: '1.5rem', fontWeight: 'bold', color: '#22c55e' }}>{data.low.toFixed(2)}</div>
+                     </div>
+                     <div style={{ background: '#1e293b', padding: '15px', borderRadius: '16px', border: '1px solid #334155' }}>
+                        <div style={{ color: '#94a3b8', fontSize: '0.85rem', marginBottom: 5 }}>總名目成交量</div>
+                        <div style={{ fontSize: '1.5rem', fontWeight: 'bold', color: '#38bdf8' }}>{formatVol(data.volume)}</div>
+                     </div>
+                     <div style={{ background: '#1e293b', padding: '15px', borderRadius: '16px', border: '1px dashed #475569' }}>
+                        <div style={{ color: '#94a3b8', fontSize: '0.85rem', marginBottom: 5 }}>單日漲跌幅</div>
+                        <div style={{ fontSize: '1.5rem', fontWeight: 'bold', color: isUp ? '#ef4444' : '#22c55e' }}>
                            {(((data.price / data.previousClose) - 1) * 100).toFixed(2)}%
                         </div>
                      </div>
-                     <div style={{ background: '#1e293b', padding: '20px', borderRadius: '16px', border: '1px dashed #475569' }}>
-                        <div style={{ color: '#94a3b8', fontSize: '0.9rem', marginBottom: 10 }}>最新即時淨值 (官方提供)</div>
-                        <div style={{ fontSize: '2.5rem', fontWeight: 'bold', color: '#fff' }}>{nav === data.price ? '無公開資料' : nav.toFixed(2)}</div>
-                     </div>
-                     <div style={{ background: '#1e293b', padding: '20px', borderRadius: '16px', border: '1px dashed #475569' }}>
-                        <div style={{ color: '#94a3b8', fontSize: '0.9rem', marginBottom: 10 }}>折溢價</div>
-                        <div style={{ fontSize: '2rem', fontWeight: 'bold', color: nav !== data.price && data.price > nav ? '#ef4444' : '#22c55e' }}>
-                           {nav === data.price ? '-' : (((data.price / nav) - 1) * 100).toFixed(2) + '%'}
+                  </div>
+
+                  {/* Institutional Investors (三大法人) */}
+                  <div style={{ background: 'linear-gradient(135deg, #1e293b 0%, #0f172a 100%)', padding: '25px', borderRadius: '16px', border: '1px solid #475569', marginBottom: '30px', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.3)' }}>
+                     <h3 style={{ color: '#f8fafc', margin: '0 0 20px 0', fontSize: '1.2rem', display: 'flex', alignItems: 'center' }}>
+                        <span style={{ marginRight: 10, background: '#38bdf8', padding: '4px 8px', borderRadius: 8, fontSize: '0.9rem', color: '#0f172a' }}>盤後</span> 近期三大法人買賣超
+                     </h3>
+                     
+                     {lateInstData ? (
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '20px' }}>
+                           <div style={{ flex: 1, minWidth: '100px' }}>
+                              <div style={{ color: '#94a3b8', fontSize: '0.85rem', marginBottom: 5 }}>外資及陸資</div>
+                              <div style={{ fontSize: '1.4rem', fontWeight: 'bold', color: lateInstData.fNet.includes('-') ? '#22c55e' : '#ef4444' }}>{formatNum(lateInstData.fNet)}</div>
+                           </div>
+                           <div style={{ flex: 1, minWidth: '100px' }}>
+                              <div style={{ color: '#94a3b8', fontSize: '0.85rem', marginBottom: 5 }}>投信</div>
+                              <div style={{ fontSize: '1.4rem', fontWeight: 'bold', color: lateInstData.iNet.includes('-') ? '#22c55e' : '#ef4444' }}>{formatNum(lateInstData.iNet)}</div>
+                           </div>
+                           <div style={{ flex: 1, minWidth: '100px' }}>
+                              <div style={{ color: '#94a3b8', fontSize: '0.85rem', marginBottom: 5 }}>自營商</div>
+                              <div style={{ fontSize: '1.4rem', fontWeight: 'bold', color: lateInstData.dNet.includes('-') ? '#22c55e' : '#ef4444' }}>{formatNum(lateInstData.dNet)}</div>
+                           </div>
+                           <div style={{ flex: 1, minWidth: '100px', borderLeft: '1px solid #475569', paddingLeft: 20 }}>
+                              <div style={{ color: '#cbd5e1', fontSize: '0.85rem', marginBottom: 5 }}>法人總計</div>
+                              <div style={{ fontSize: '1.6rem', fontWeight: 'bold', color: lateInstData.totalNet.includes('-') ? '#22c55e' : '#ef4444' }}>{formatNum(lateInstData.totalNet)}</div>
+                           </div>
                         </div>
-                     </div>
-                     <div style={{ background: '#1e293b', padding: '20px', borderRadius: '16px', border: '1px dashed #475569' }}>
-                        <div style={{ color: '#94a3b8', fontSize: '0.9rem', marginBottom: 10 }}>目前發行狀態</div>
-                        <div style={{ fontSize: '1.2rem', fontWeight: 'bold', color: '#cbd5e1', paddingTop: 8 }}>總規模數量依各官網為準</div>
-                     </div>
+                     ) : (
+                        <div style={{ color: '#64748b', fontStyle: 'italic', padding: '10px 0' }}>
+                           無盤後籌碼公開資料 (需為上市股票，或遇到 Vercel IP 防火牆阻擋)
+                        </div>
+                     )}
                   </div>
 
                   {/* Chart */}
