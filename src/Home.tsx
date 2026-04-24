@@ -67,6 +67,14 @@ export default function Home({ onAppClick }: Props) {
             </div>
             <span className="app-label">碎時空</span>
           </div>
+
+          {/* ETF App */}
+          <div className="app-icon-wrapper" onClick={() => onAppClick('etf')}>
+            <div className="app-icon" style={{ background: 'linear-gradient(135deg, #f59e0b, #d97706)', border: '2px solid #fcd34d', boxShadow: '0 0 10px #f59e0b' }}>
+              <span className="icon-emoji">📈</span>
+            </div>
+            <span className="app-label" style={{ fontWeight: 'bold' }}>台股ETF</span>
+          </div>
         </div>
       </div>
     </div>

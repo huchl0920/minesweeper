@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 
 type GameState = 'menu' | 'playing' | 'gameover';
 
@@ -11,12 +11,17 @@ const CORE_RADIUS = 30;
 const MAX_WALL_LENGTH = 50; // segments
 const WALL_LIFETIME = 5; // seconds
 
+interface LeaderboardEntry { date: string; score: number; }
+const getLeaderboard = (): LeaderboardEntry[] => JSON.parse(localStorage.getItem('fc_leaderboard') || '[]');
+const saveLeaderboard = (lb: LeaderboardEntry[]) => localStorage.setItem('fc_leaderboard', JSON.stringify(lb));
+
 export default function FluidCoreApp({ onBack }: { onBack: () => void }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [gameState, setGameState] = useState<GameState>('menu');
   const [score, setScore] = useState(0);
   const [coreHp, setCoreHp] = useState(100);
   const [energy, setEnergy] = useState(0); // For Supernova 0 ~ 100
+  const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>(getLeaderboard());
   
   const frameRef = useRef<number>(0);
   const lastTimeRef = useRef<number>(0);
@@ -42,7 +47,7 @@ export default function FluidCoreApp({ onBack }: { onBack: () => void }) {
     lastTimeRef.current = performance.now();
   };
 
-  const supernova = () => {
+  const supernova = useCallback(() => {
     if (energy < 100) return;
     setEnergy(0);
     // Blast all drops away
@@ -54,13 +59,13 @@ export default function FluidCoreApp({ onBack }: { onBack: () => void }) {
        d.vx += (dx / mag) * 1500;
        d.vy += (dy / mag) * 1500;
     }
-  };
+  }, [energy, canvasWidth, canvasHeight]);
 
   useEffect(() => {
     const hKey = (e: KeyboardEvent) => { if (e.code === 'Space') supernova(); };
     window.addEventListener('keydown', hKey);
     return () => window.removeEventListener('keydown', hKey);
-  }, [energy]);
+  }, [supernova]);
 
   useEffect(() => {
     if (gameState !== 'playing') return;
@@ -188,7 +193,15 @@ export default function FluidCoreApp({ onBack }: { onBack: () => void }) {
       if (hpDmg > 0) {
          setCoreHp(h => {
            const nh = h - hpDmg;
-           if (nh <= 0) {
+           if (nh <= 0 && gameState === 'playing') {
+              setScore(s => {
+                  const lb = [...leaderboard, { date: new Date().toLocaleDateString(), score: s }];
+                  lb.sort((a,b) => b.score - a.score);
+                  const top5 = lb.slice(0, 5);
+                  setLeaderboard(top5);
+                  saveLeaderboard(top5);
+                  return s;
+              });
               setGameState('gameover');
               cancelAnimationFrame(frameRef.current);
            }
@@ -236,7 +249,7 @@ export default function FluidCoreApp({ onBack }: { onBack: () => void }) {
     };
     frameRef.current = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(frameRef.current);
-  }, [gameState, canvasWidth, canvasHeight]);
+  }, [gameState, canvasWidth, canvasHeight, leaderboard]);
 
   const handlePtrDown = (e: React.PointerEvent) => {
     if(gameState!=='playing') return;
@@ -272,6 +285,17 @@ export default function FluidCoreApp({ onBack }: { onBack: () => void }) {
          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', color: '#fff', gap: 20 }}>
            <h1 style={{ color: '#38bdf8', fontSize: '3rem', textShadow: '0 0 20px #0ea5e9' }}>FLUID CORE</h1>
            <p style={{ color: '#94a3b8' }}>拖動滑鼠畫出光牆，防禦來自四面八方的流體海嘯！</p>
+           {leaderboard.length > 0 && (
+             <div style={{ background: 'rgba(0,0,0,0.5)', padding: 15, borderRadius: 10, width: '80%', maxWidth: 400 }}>
+               <h3 style={{ margin: '0 0 10px 0', color: '#fde047' }}>🏆 排行榜 TOP 5</h3>
+               {leaderboard.map((entry, idx) => (
+                  <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', color: '#cbd5e1', marginBottom: 5 }}>
+                    <span>#{idx+1} {entry.date}</span>
+                    <span style={{ fontWeight: 'bold' }}>{entry.score} 分</span>
+                  </div>
+               ))}
+             </div>
+           )}
            <button onClick={startGame} style={{ padding: '15px 40px', background: '#0284c7', border: 'none', borderRadius: 30, color: '#fff', fontSize: '1.5rem', fontWeight: 'bold', cursor: 'pointer', boxShadow: '0 0 20px #0ea5e9' }}>啟動核心</button>
          </div>
        )}

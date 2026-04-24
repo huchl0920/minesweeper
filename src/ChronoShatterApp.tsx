@@ -8,10 +8,17 @@ interface Clone { id: number; path: RecPt[]; startTime: number; maxTime: number;
 interface Enemy { id: number; x: number; y: number; hp: number; maxHp: number; speed: number; radius: number; isElite?: boolean; dead?: boolean; }
 interface Bullet { id: number; x: number; y: number; vx: number; vy: number; life: number; }
 
+interface LeaderboardEntry { date: string; score: number; }
+const getLeaderboard = (): LeaderboardEntry[] => JSON.parse(localStorage.getItem('cs_leaderboard') || '[]');
+const saveLeaderboard = (lb: LeaderboardEntry[]) => localStorage.setItem('cs_leaderboard', JSON.stringify(lb));
+
 export default function ChronoShatterApp({ onBack }: { onBack: () => void }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [gameState, setGameState] = useState<GameState>('menu');
   const [score, setScore] = useState(0);
+  const [playerHp, setPlayerHp] = useState(100);
+  const [isRecording, setIsRecording] = useState(false);
+  const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>(getLeaderboard());
   
   const frameRef = useRef<number>(0);
   const lastTimeRef = useRef<number>(0);
@@ -23,8 +30,7 @@ export default function ChronoShatterApp({ onBack }: { onBack: () => void }) {
   const bulletsRef = useRef<Bullet[]>([]);
   const clonesRef = useRef<Clone[]>([]);
   
-  // Recording state
-  const isRecordingRef = useRef(false);
+  // Recording logic state (keep refs for physics but use state for UI)
   const recordingPathRef = useRef<RecPt[]>([]);
   const recordStartTimeRef = useRef(0);
   
@@ -41,14 +47,15 @@ export default function ChronoShatterApp({ onBack }: { onBack: () => void }) {
 
   const startGame = () => {
     setGameState('playing');
-    setScore(0);
-    pRef.current = { x: canvasWidth/2, y: canvasHeight/2, hp: 100, maxHp: 100, speed: 250 };
-    enemiesRef.current = [];
-    bulletsRef.current = [];
-    clonesRef.current = [];
-    isRecordingRef.current = false;
-    recordingPathRef.current = [];
-    playTimeRef.current = 0;
+     setScore(0);
+     setPlayerHp(100);
+     pRef.current = { x: canvasWidth/2, y: canvasHeight/2, hp: 100, maxHp: 100, speed: 250 };
+     enemiesRef.current = [];
+     bulletsRef.current = [];
+     clonesRef.current = [];
+     setIsRecording(false);
+     recordingPathRef.current = [];
+     playTimeRef.current = 0;
     shatterRef.current.duration = 0;
     lastTimeRef.current = performance.now();
   };
@@ -56,16 +63,16 @@ export default function ChronoShatterApp({ onBack }: { onBack: () => void }) {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => { 
        keysRef.current[e.code] = true; 
-       if (e.code === 'Space' && gameState === 'playing' && !isRecordingRef.current) {
-          isRecordingRef.current = true;
+       if (e.code === 'Space' && gameState === 'playing' && !isRecording) {
+          setIsRecording(true);
           recordStartTimeRef.current = playTimeRef.current;
           recordingPathRef.current = [];
        }
     };
     const handleKeyUp = (e: KeyboardEvent) => { 
        keysRef.current[e.code] = false; 
-       if (e.code === 'Space' && gameState === 'playing' && isRecordingRef.current) {
-          isRecordingRef.current = false;
+       if (e.code === 'Space' && gameState === 'playing') {
+          setIsRecording(false);
           if (recordingPathRef.current.length > 5) {
              // Spawn clone
              clonesRef.current.push({
@@ -81,7 +88,7 @@ export default function ChronoShatterApp({ onBack }: { onBack: () => void }) {
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('keyup', handleKeyUp);
     return () => { window.removeEventListener('keydown', handleKeyDown); window.removeEventListener('keyup', handleKeyUp); };
-  }, [gameState]);
+  }, [gameState, isRecording]);
 
   useEffect(() => {
     if (gameState !== 'playing') return;
@@ -134,7 +141,7 @@ export default function ChronoShatterApp({ onBack }: { onBack: () => void }) {
       p.y = Math.max(15, Math.min(canvasHeight - 15, p.y));
 
       // Record
-      if (isRecordingRef.current) {
+      if (isRecording) {
          recordingPathRef.current.push({ x: p.x, y: p.y, time: gameTime - recordStartTimeRef.current });
       }
 
@@ -218,7 +225,16 @@ export default function ChronoShatterApp({ onBack }: { onBack: () => void }) {
 
          if (mag < e.radius + 15) {
             p.hp -= 20 * dt;
-            if (p.hp <= 0) {
+            setPlayerHp(p.hp);
+            if (p.hp <= 0 && gameState === 'playing') {
+               setScore(s => {
+                  const lb = [...leaderboard, { date: new Date().toLocaleDateString(), score: s }];
+                  lb.sort((a,b) => b.score - a.score);
+                  const top5 = lb.slice(0, 5);
+                  setLeaderboard(top5);
+                  saveLeaderboard(top5);
+                  return s;
+               });
                setGameState('gameover');
                cancelAnimationFrame(frameRef.current);
             }
@@ -275,14 +291,14 @@ export default function ChronoShatterApp({ onBack }: { onBack: () => void }) {
       }
 
       // Draw Player
-      ctx.fillStyle = isRecordingRef.current ? '#38bdf8' : '#fff';
-      ctx.shadowColor = isRecordingRef.current ? '#38bdf8' : '#fff';
+      ctx.fillStyle = isRecording ? '#38bdf8' : '#fff';
+      ctx.shadowColor = isRecording ? '#38bdf8' : '#fff';
       ctx.beginPath();
       ctx.arc(p.x, p.y, 15, 0, Math.PI*2);
       ctx.fill();
       
       // Draw Recording Trail
-      if (isRecordingRef.current && recordingPathRef.current.length > 0) {
+      if (isRecording && recordingPathRef.current.length > 0) {
          ctx.strokeStyle = 'rgba(56, 189, 248, 0.4)';
          ctx.lineWidth = 4;
          ctx.beginPath();
@@ -297,7 +313,7 @@ export default function ChronoShatterApp({ onBack }: { onBack: () => void }) {
 
     frameRef.current = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(frameRef.current);
-  }, [gameState, canvasWidth, canvasHeight]);
+  }, [gameState, canvasWidth, canvasHeight, isRecording, leaderboard]);
 
   return (
     <div style={{ width: '100vw', height: '100vh', background: '#000', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
@@ -309,6 +325,17 @@ export default function ChronoShatterApp({ onBack }: { onBack: () => void }) {
          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', color: '#fff', gap: 20 }}>
            <h1 style={{ color: '#a855f7', fontSize: '3rem', textShadow: '0 0 20px #a855f7', letterSpacing: 5 }}>CHRONO SHATTER</h1>
            <p style={{ color: '#94a3b8' }}>按住 SPACE 錄製軌跡，放開後召喚無敵破壞分身！</p>
+           {leaderboard.length > 0 && (
+             <div style={{ background: 'rgba(0,0,0,0.5)', padding: 15, borderRadius: 10, width: '80%', maxWidth: 400 }}>
+               <h3 style={{ margin: '0 0 10px 0', color: '#fde047' }}>🏆 排行榜 TOP 5</h3>
+               {leaderboard.map((entry, idx) => (
+                  <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', color: '#cbd5e1', marginBottom: 5 }}>
+                    <span>#{idx+1} {entry.date}</span>
+                    <span style={{ fontWeight: 'bold' }}>{entry.score} 分</span>
+                  </div>
+               ))}
+             </div>
+           )}
            <button onClick={startGame} style={{ padding: '15px 40px', background: '#7e22ce', border: 'none', borderRadius: 30, color: '#fff', fontSize: '1.5rem', fontWeight: 'bold', cursor: 'pointer', boxShadow: '0 0 20px #a855f7' }}>進入碎時空</button>
          </div>
        )}
@@ -316,9 +343,9 @@ export default function ChronoShatterApp({ onBack }: { onBack: () => void }) {
        {gameState === 'playing' && (
          <div style={{ position: 'relative' }}>
            <div style={{ position: 'absolute', top: 10, left: 10, color: '#fff', zIndex: 10, fontSize: '1.2rem', textShadow: '0 0 5px #000' }}>
-              <div>HP: {Math.floor(pRef.current?.hp || 0)} / 100</div>
+              <div>HP: {Math.max(0, Math.floor(playerHp))} / 100</div>
               <div>存活: {score} 分</div>
-              {isRecordingRef.current && <div style={{ color: '#38bdf8', fontWeight: 'bold', marginTop: 10 }}>[REC] 正在錄製時間軸...</div>}
+              {isRecording && <div style={{ color: '#38bdf8', fontWeight: 'bold', marginTop: 10 }}>[REC] 正在錄製時間軸...</div>}
            </div>
            <canvas 
              ref={canvasRef} 

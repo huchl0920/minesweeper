@@ -10,6 +10,9 @@ const GOOD_RANGE = 90;
 const MISS_RANGE = 90;
 const MAX_HP = 150;
 
+interface LeaderboardEntry { date: string; score: number; }
+const getLeaderboard = (): LeaderboardEntry[] => JSON.parse(localStorage.getItem('ra_leaderboard') || '[]');
+const saveLeaderboard = (lb: LeaderboardEntry[]) => localStorage.setItem('ra_leaderboard', JSON.stringify(lb));
 
 const INTERVAL_OPTIONS = [
   { label: '稀', value: 1400 },
@@ -41,6 +44,7 @@ export default function RhythmApp({ onBack }: { onBack: () => void }) {
   const [countdown, setCountdown] = useState(3);
   const [noteSpeed, setNoteSpeed] = useState(3);
   const [noteInterval, setNoteInterval] = useState(900);
+  const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>(getLeaderboard());
 
   // Music state
   const [musicName, setMusicName] = useState<string | null>(null);
@@ -312,22 +316,30 @@ export default function RhythmApp({ onBack }: { onBack: () => void }) {
       }
       effects.current = effects.current.filter(e => e.alpha > 0);
 
+      const checkGameOver = () => {
+         try { musicSourceRef.current?.stop(); } catch (_) { /* ok */ }
+         const finalScore = Math.round(scoreRef.current);
+         setResult({ score: finalScore, maxCombo: maxComboRef.current });
+         setLeaderboard(prev => {
+            const lb = [...prev, { date: new Date().toLocaleDateString(), score: finalScore }];
+            lb.sort((a,b) => b.score - a.score);
+            const top5 = lb.slice(0, 5);
+            saveLeaderboard(top5);
+            return top5;
+         });
+         setGameState('gameover');
+         cancelAnimationFrame(frameRef.current);
+      };
+
       // HP check
       if (hpRef.current <= 0) {
-        // Stop music
-        try { musicSourceRef.current?.stop(); } catch (_) { /* ok */ }
-        setGameState('gameover');
-        setResult({ score: Math.round(scoreRef.current), maxCombo: maxComboRef.current });
-        cancelAnimationFrame(frameRef.current);
+        checkGameOver();
         return;
       }
 
       // Music-mode: stop game when song ends
       if (beatMode === 'music' && musicTime !== undefined && musicTime >= (audioBufferRef.current?.duration ?? Infinity)) {
-        try { musicSourceRef.current?.stop(); } catch (_) { /* ok */ }
-        setGameState('gameover');
-        setResult({ score: Math.round(scoreRef.current), maxCombo: maxComboRef.current });
-        cancelAnimationFrame(frameRef.current);
+        checkGameOver();
         return;
       }
 
@@ -447,6 +459,18 @@ export default function RhythmApp({ onBack }: { onBack: () => void }) {
               <p style={{ marginTop: 10, lineHeight: 1.8, color: 'rgba(255,255,255,0.7)', fontSize: '0.9rem' }}>
                 方塊落到判定線時<br />按鍵盤 E F K O 或點擊軌道
               </p>
+
+              {leaderboard.length > 0 && (
+                <div style={{ background: 'rgba(0,0,0,0.5)', padding: 10, borderRadius: 10, width: '100%', marginTop: 15 }}>
+                  <h3 style={{ margin: '0 0 5px 0', color: '#fde047', fontSize: '0.9rem' }}>🏆 排行榜 TOP 5</h3>
+                  {leaderboard.map((entry, idx) => (
+                      <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', color: '#cbd5e1', fontSize: '0.8rem' }}>
+                        <span>#{idx+1} {entry.date}</span>
+                        <span style={{ fontWeight: 'bold' }}>{entry.score} 分</span>
+                      </div>
+                  ))}
+                </div>
+              )}
 
               {/* Music selector */}
               <div style={{ marginTop: 20, marginBottom: 8, fontSize: '0.85rem', color: 'rgba(255,255,255,0.5)', letterSpacing: 2 }}>音樂模式</div>
