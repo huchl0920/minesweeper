@@ -24,6 +24,9 @@ export default function ChronoShatterApp({ onBack }: { onBack: () => void }) {
   const lastTimeRef = useRef<number>(0);
   
   const keysRef = useRef<{ [key: string]: boolean }>({});
+  const joystickRef = useRef({ vx: 0, vy: 0 });
+  const [joystickThumb, setJoystickThumb] = useState({ x: 0, y: 0 });
+  const joystickBaseRef = useRef<HTMLDivElement>(null);
   
   const pRef = useRef({ x: 250, y: 400, hp: 100, maxHp: 100, speed: 250 });
   const enemiesRef = useRef<Enemy[]>([]);
@@ -70,8 +73,35 @@ export default function ChronoShatterApp({ onBack }: { onBack: () => void }) {
        }
   };
 
-  const handleDirDown = (code: string) => { keysRef.current[code] = true; };
-  const handleDirUp = (code: string) => { keysRef.current[code] = false; };
+  const handleJoystickStart = (e: React.PointerEvent<HTMLDivElement>) => {
+      e.currentTarget.setPointerCapture(e.pointerId);
+      handleJoystickMove(e);
+  };
+
+  const handleJoystickMove = (e: React.PointerEvent<HTMLDivElement>) => {
+      if (!e.currentTarget.hasPointerCapture(e.pointerId)) return;
+      const rect = e.currentTarget.getBoundingClientRect();
+      const cx = rect.left + rect.width / 2;
+      const cy = rect.top + rect.height / 2;
+      
+      let dx = e.clientX - cx;
+      let dy = e.clientY - cy;
+      const maxR = rect.width / 2;
+      const mag = Math.hypot(dx, dy);
+      
+      if (mag > maxR) {
+          dx = (dx / mag) * maxR;
+          dy = (dy / mag) * maxR;
+      }
+      setJoystickThumb({ x: dx, y: dy });
+      joystickRef.current = { vx: dx / maxR, vy: dy / maxR };
+  };
+
+  const handleJoystickEnd = (e: React.PointerEvent<HTMLDivElement>) => {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+      setJoystickThumb({ x: 0, y: 0 });
+      joystickRef.current = { vx: 0, vy: 0 };
+  };
 
   const startGame = () => {
     setGameState('playing');
@@ -137,13 +167,17 @@ export default function ChronoShatterApp({ onBack }: { onBack: () => void }) {
       }
 
       // Movement
-      let vx = 0; let vy = 0;
-      if (keysRef.current['KeyW']) vy -= 1;
-      if (keysRef.current['KeyS']) vy += 1;
-      if (keysRef.current['KeyA']) vx -= 1;
-      if (keysRef.current['KeyD']) vx += 1;
-      const mag = Math.hypot(vx, vy);
-      if (mag > 0) { vx /= mag; vy /= mag; }
+      let vx = joystickRef.current.vx;
+      let vy = joystickRef.current.vy;
+      
+      if (vx === 0 && vy === 0) {
+         if (keysRef.current['KeyW']) vy -= 1;
+         if (keysRef.current['KeyS']) vy += 1;
+         if (keysRef.current['KeyA']) vx -= 1;
+         if (keysRef.current['KeyD']) vx += 1;
+         const mag = Math.hypot(vx, vy);
+         if (mag > 0) { vx /= mag; vy /= mag; }
+      }
       
       p.x += vx * p.speed * dt;
       p.y += vy * p.speed * dt;
@@ -372,41 +406,37 @@ export default function ChronoShatterApp({ onBack }: { onBack: () => void }) {
             
             {/* Mobile Virtual Controls */}
             {isMobile && (
-              <div style={{ display: 'flex', width: canvasWidth, justifyContent: 'space-between', alignItems: 'center', marginTop: 15, padding: '0 10px', boxSizing: 'border-box', userSelect: 'none', WebkitUserSelect: 'none', touchAction: 'none' }}>
-                 {/* D-PAD */}
-                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 50px)', gridTemplateRows: 'repeat(3, 50px)', gap: 5 }}>
-                    <div />
-                    <button 
-                      onTouchStart={(e) => { e.preventDefault(); handleDirDown('KeyW') }} onTouchEnd={(e) => { e.preventDefault(); handleDirUp('KeyW') }}
-                      onMouseDown={() => handleDirDown('KeyW')} onMouseUp={() => handleDirUp('KeyW')} onMouseLeave={() => handleDirUp('KeyW')}
-                      style={{ background: '#27272a', border: '1px solid #3f3f46', borderRadius: 8, color: '#a1a1aa', fontWeight: 'bold', fontSize: '1.2rem' }}>W</button>
-                    <div />
-                    <button 
-                      onTouchStart={(e) => { e.preventDefault(); handleDirDown('KeyA') }} onTouchEnd={(e) => { e.preventDefault(); handleDirUp('KeyA') }}
-                      onMouseDown={() => handleDirDown('KeyA')} onMouseUp={() => handleDirUp('KeyA')} onMouseLeave={() => handleDirUp('KeyA')}
-                      style={{ background: '#27272a', border: '1px solid #3f3f46', borderRadius: 8, color: '#a1a1aa', fontWeight: 'bold', fontSize: '1.2rem' }}>A</button>
-                    <button 
-                      onTouchStart={(e) => { e.preventDefault(); handleDirDown('KeyS') }} onTouchEnd={(e) => { e.preventDefault(); handleDirUp('KeyS') }}
-                      onMouseDown={() => handleDirDown('KeyS')} onMouseUp={() => handleDirUp('KeyS')} onMouseLeave={() => handleDirUp('KeyS')}
-                      style={{ background: '#27272a', border: '1px solid #3f3f46', borderRadius: 8, color: '#a1a1aa', fontWeight: 'bold', fontSize: '1.2rem' }}>S</button>
-                    <button 
-                      onTouchStart={(e) => { e.preventDefault(); handleDirDown('KeyD') }} onTouchEnd={(e) => { e.preventDefault(); handleDirUp('KeyD') }}
-                      onMouseDown={() => handleDirDown('KeyD')} onMouseUp={() => handleDirUp('KeyD')} onMouseLeave={() => handleDirUp('KeyD')}
-                      style={{ background: '#27272a', border: '1px solid #3f3f46', borderRadius: 8, color: '#a1a1aa', fontWeight: 'bold', fontSize: '1.2rem' }}>D</button>
+              <div style={{ display: 'flex', width: canvasWidth, justifyContent: 'space-between', alignItems: 'center', marginTop: 15, padding: '0 20px', boxSizing: 'border-box', userSelect: 'none', WebkitUserSelect: 'none', touchAction: 'none' }}>
+                 {/* Virtual Joystick */}
+                 <div 
+                    ref={joystickBaseRef}
+                    onPointerDown={handleJoystickStart}
+                    onPointerMove={handleJoystickMove}
+                    onPointerUp={handleJoystickEnd}
+                    onPointerCancel={handleJoystickEnd}
+                    style={{ 
+                        width: 140, height: 140, borderRadius: '50%', background: 'rgba(39, 39, 42, 0.6)', 
+                        border: '2px solid rgba(63, 63, 70, 0.8)', position: 'relative', touchAction: 'none' 
+                    }}
+                 >
+                    <div style={{
+                        position: 'absolute', top: '50%', left: '50%', width: 60, height: 60,
+                        background: 'radial-gradient(circle, #a1a1aa 0%, #52525b 100%)',
+                        borderRadius: '50%', boxShadow: '0 0 10px rgba(0,0,0,0.5)', pointerEvents: 'none',
+                        transform: `translate(calc(-50% + ${joystickThumb.x}px), calc(-50% + ${joystickThumb.y}px))`
+                    }} />
                  </div>
                  
                  {/* Action Button */}
                  <button 
-                    onTouchStart={(e) => { e.preventDefault(); handleActionDown() }} 
-                    onTouchEnd={(e) => { e.preventDefault(); handleActionUp() }}
-                    onMouseDown={() => handleActionDown()}
-                    onMouseUp={() => handleActionUp()}
-                    onMouseLeave={() => handleActionUp()}
+                    onPointerDown={(e) => { e.currentTarget.setPointerCapture(e.pointerId); handleActionDown(); }}
+                    onPointerUp={(e) => { e.currentTarget.releasePointerCapture(e.pointerId); handleActionUp(); }}
+                    onPointerCancel={(e) => { e.currentTarget.releasePointerCapture(e.pointerId); handleActionUp(); }}
                     style={{ 
-                      width: 80, height: 80, borderRadius: '50%', 
+                      width: 100, height: 100, borderRadius: '50%', 
                       background: 'radial-gradient(circle, #a855f7 0%, #7e22ce 100%)', 
-                      border: '4px solid #c084fc', color: '#fff', fontWeight: 'bold', fontSize: '1.2rem',
-                      boxShadow: '0 0 15px rgba(168, 85, 247, 0.8)'
+                      border: '4px solid #c084fc', color: '#fff', fontWeight: 'bold', fontSize: '1.4rem',
+                      boxShadow: '0 0 20px rgba(168, 85, 247, 0.8)', touchAction: 'none'
                     }}
                  >
                     SPLIT

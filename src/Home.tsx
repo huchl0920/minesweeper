@@ -4,7 +4,7 @@ interface Props {
   onAppClick: (appId: string) => void;
 }
 
-const releaseVersion = "v2026.04.24.1625";
+const releaseVersion = "v2026.04.24.1640";
 
 export default function Home({ onAppClick }: Props) {
   // Current time display for a nice dashboard feel
