@@ -15,6 +15,12 @@ interface StockData {
   instData: { name: string; fNet: string; iNet: string; dNet: string; totalNet: string } | null;
 }
 
+interface EtfComponent {
+  name: string;
+  code: string;
+  weight: string;
+}
+
 interface TwseEtfInfo {
   name: string;
   nav: number;
@@ -156,6 +162,10 @@ export default function EtfApp({ onBack }: { onBack: () => void }) {
   const [selectedCode, setSelectedCode] = useState<string | null>(null);
   const [loadingCode, setLoadingCode] = useState<string | null>(null);
   const [showSuggestions, setShowSuggestions] = useState(false);
+  
+  const [componentsMap, setComponentsMap] = useState<Record<string, EtfComponent[]>>({});
+  const [loadingComponents, setLoadingComponents] = useState<Record<string, boolean>>({});
+  const [showComponents, setShowComponents] = useState<Record<string, boolean>>({});
   
   // TWSE ETF Data (For Chinese Name + NAV)
   useEffect(() => {
@@ -340,6 +350,35 @@ export default function EtfApp({ onBack }: { onBack: () => void }) {
     setWatchlist(newWl);
     saveWatchlist(newWl);
     if (viewMode === 'detail' && selectedCode === code) setViewMode('list');
+  };
+
+  const fetchComponents = async (code: string) => {
+      if (componentsMap[code]) {
+          setShowComponents(prev => ({...prev, [code]: !prev[code]}));
+          return;
+      }
+      try {
+         setLoadingComponents(prev => ({...prev, [code]: true}));
+         setShowComponents(prev => ({...prev, [code]: true}));
+         const res = await fetch(`/api/moneydj/ETF/X/Basic/Basic0007.xdjhtm?etfid=${code}.TW`);
+         const text = await res.text();
+         
+         const regex = /<td[^>]*><a[^>]*>(.+?)\(([A-Z0-9.]+)\)<\/a><\/td><td[^>]*>([0-9.]+?)<\/td>/g;
+         const list: EtfComponent[] = [];
+         let match;
+         while((match = regex.exec(text))) {
+            list.push({ name: match[1].trim(), code: match[2], weight: match[3] });
+            if (list.length >= 10) break;
+         }
+         
+         if (list.length === 0) list.push({name: '無公開資料或解析失敗', code: '', weight: '0'});
+         
+         setComponentsMap(prev => ({...prev, [code]: list}));
+      } catch(e) {
+         console.error(e);
+      } finally {
+         setLoadingComponents(prev => ({...prev, [code]: false}));
+      }
   };
 
   const openDetail = (code: string) => {
@@ -553,6 +592,50 @@ export default function EtfApp({ onBack }: { onBack: () => void }) {
                         </div>
                      )}
                   </div>
+
+                  {/* ETF Constituents Drill-Down Panel */}
+                  {isEtf && (
+                     <div style={{ marginBottom: '30px', background: 'linear-gradient(135deg, #1e293b 0%, #0f172a 100%)', padding: '25px', borderRadius: '16px', border: '1px solid #475569', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.3)' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: showComponents[data.code] ? 20 : 0 }}>
+                           <h3 style={{ color: '#f8fafc', margin: 0, fontSize: '1.2rem', display: 'flex', alignItems: 'center' }}>
+                              <span style={{ marginRight: 10, background: '#a855f7', padding: '4px 8px', borderRadius: 8, fontSize: '0.9rem', color: '#fff' }}>ETF</span> 預估前十大成分股
+                           </h3>
+                           <button onClick={() => fetchComponents(data.code)} style={{ background: '#334155', color: '#f8fafc', border: 'none', borderRadius: 8, padding: '6px 12px', cursor: 'pointer', fontWeight: 'bold' }}>
+                              {showComponents[data.code] ? '收起清單' : '展開檢視'}
+                           </button>
+                        </div>
+                        
+                        {showComponents[data.code] && (
+                           <div>
+                              {loadingComponents[data.code] ? (
+                                 <div style={{ padding: '20px 0', color: '#94a3b8', textAlign: 'center' }}>攔截網頁資料中，請稍候...</div>
+                              ) : (
+                                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '15px' }}>
+                                    {componentsMap[data.code]?.map((comp, idx) => (
+                                       <div 
+                                          key={idx} 
+                                          onClick={() => {
+                                             if(comp.code) {
+                                               handleAdd(comp.code, comp.name).then(() => openDetail(comp.code));
+                                             }
+                                          }}
+                                          style={{ background: '#1e293b', padding: '15px', borderRadius: '12px', border: '1px solid #334155', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: comp.code ? 'pointer' : 'default', transition: 'background 0.2s' }}
+                                          onMouseEnter={e => comp.code && (e.currentTarget.style.background = '#334155')}
+                                          onMouseLeave={e => comp.code && (e.currentTarget.style.background = '#1e293b')}
+                                       >
+                                          <div>
+                                             <div style={{ fontSize: '1.1rem', fontWeight: 'bold', color: '#f8fafc', marginBottom: 4 }}>{comp.name}</div>
+                                             <div style={{ color: '#64748b', fontSize: '0.85rem' }}>{comp.code}</div>
+                                          </div>
+                                          <div style={{ fontSize: '1.2rem', fontWeight: 'bold', color: '#38bdf8' }}>{comp.weight}{comp.weight !== '0' && '%'}</div>
+                                       </div>
+                                    ))}
+                                 </div>
+                              )}
+                           </div>
+                        )}
+                     </div>
+                  )}
 
                   {/* Chart */}
                   <div>

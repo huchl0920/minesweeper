@@ -5,6 +5,10 @@
       "destination": "https://mis.twse.com.tw/:path*"
     },
     {
+      "source": "/api/moneydj/:path*",
+      "destination": "https://www.moneydj.com/:path*"
+    },
+    {
       "source": "/api/twse_www/:path*",
       "destination": "https://www.twse.com.tw/:path*"
     },

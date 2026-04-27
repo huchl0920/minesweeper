@@ -6,6 +6,11 @@ export default defineConfig({
   plugins: [react()],
   server: {
     proxy: {
+      '/api/moneydj': {
+        target: 'https://www.moneydj.com',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api\/moneydj/, '')
+      },
       '/api/twse_www': {
         target: 'https://www.twse.com.tw',
         changeOrigin: true,
