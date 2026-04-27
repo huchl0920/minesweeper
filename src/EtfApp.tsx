@@ -614,14 +614,7 @@ export default function EtfApp({ onBack }: { onBack: () => void }) {
                                     {componentsMap[data.code]?.map((comp, idx) => (
                                        <div 
                                           key={idx} 
-                                          onClick={() => {
-                                             if(comp.code) {
-                                               handleAdd(comp.code, comp.name).then(() => openDetail(comp.code));
-                                             }
-                                          }}
-                                          style={{ background: '#1e293b', padding: '15px', borderRadius: '12px', border: '1px solid #334155', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: comp.code ? 'pointer' : 'default', transition: 'background 0.2s' }}
-                                          onMouseEnter={e => comp.code && (e.currentTarget.style.background = '#334155')}
-                                          onMouseLeave={e => comp.code && (e.currentTarget.style.background = '#1e293b')}
+                                          style={{ background: '#1e293b', padding: '15px', borderRadius: '12px', border: '1px solid #334155', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
                                        >
                                           <div>
                                              <div style={{ fontSize: '1.1rem', fontWeight: 'bold', color: '#f8fafc', marginBottom: 4 }}>{comp.name}</div>
