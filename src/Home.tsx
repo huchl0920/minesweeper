@@ -77,6 +77,14 @@ export default function Home({ onAppClick }: Props) {
             </div>
             <span className="app-label" style={{ fontWeight: 'bold' }}>台股</span>
           </div>
+
+          {/* Stock Screener App */}
+          <div className="app-icon-wrapper" onClick={() => onAppClick('screener')}>
+            <div className="app-icon" style={{ background: 'linear-gradient(135deg, #06b6d4, #0891b2)', border: '2px solid #22d3ee', boxShadow: '0 0 10px #06b6d4' }}>
+              <span className="icon-emoji">🔍</span>
+            </div>
+            <span className="app-label">智能選股</span>
+          </div>
         </div>
         
         {/* Version Display */}

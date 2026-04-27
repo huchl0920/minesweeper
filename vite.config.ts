@@ -25,6 +25,16 @@ export default defineConfig({
         target: 'https://query1.finance.yahoo.com',
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api\/yahoo/, '')
+      },
+      '/api/tpex': {
+        target: 'https://www.tpex.org.tw',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api\/tpex/, '')
+      },
+      '/api/finmind': {
+        target: 'https://api.finmindtrade.com',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api\/finmind/, '')
       }
     }
   }
