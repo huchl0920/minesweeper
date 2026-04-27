@@ -147,7 +147,7 @@ export default function StockScreenerApp({ onBack }: { onBack: () => void }) {
       
       for (let i = 0; i < fullList.length; i += batchSize) {
         const batch = fullList.slice(i, i + batchSize);
-        const symbols = batch.map(s => s.sym).join(',');
+        const symbols = batch.map((s: any) => s.sym).join(',');
         
         let success = false;
         let retryCount = 0;
@@ -162,7 +162,7 @@ export default function StockScreenerApp({ onBack }: { onBack: () => void }) {
             }
             const data = await res.json();
             
-            batch.forEach(stock => {
+            batch.forEach((stock: any) => {
             const spark = data[stock.sym];
             if (spark && spark.close) {
               const closeRaw = spark.close;
