@@ -14,7 +14,15 @@
     },
     {
       "source": "/api/yahoo/:path*",
-      "destination": "https://query1.finance.yahoo.com/:path*"
+      "destination": "https://query2.finance.yahoo.com/:path*"
+    },
+    {
+      "source": "/api/tpex/:path*",
+      "destination": "https://www.tpex.org.tw/:path*"
+    },
+    {
+      "source": "/api/finmind/:path*",
+      "destination": "https://api.finmindtrade.com/:path*"
     },
     {
       "source": "/(.*)",
