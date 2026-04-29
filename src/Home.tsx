@@ -85,6 +85,14 @@ export default function Home({ onAppClick }: Props) {
             </div>
             <span className="app-label">智能選股</span>
           </div>
+
+          {/* Fibo Backtest App */}
+          <div className="app-icon-wrapper" onClick={() => onAppClick('fibo')}>
+            <div className="app-icon" style={{ background: 'linear-gradient(135deg, #ec4899, #be185d)', border: '2px solid #f472b6', boxShadow: '0 0 10px #ec4899' }}>
+              <span className="icon-emoji">🎯</span>
+            </div>
+            <span className="app-label">策略回測</span>
+          </div>
         </div>
         
         {/* Version Display */}

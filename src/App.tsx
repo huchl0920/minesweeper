@@ -8,14 +8,15 @@ import FluidCoreApp from './FluidCoreApp'
 import ChronoShatterApp from './ChronoShatterApp'
 import EtfApp from './EtfApp'
 import StockScreenerApp from './StockScreenerApp'
+import StockStrategyApp from './StockStrategyApp'
 
 export default function App() {
-  const [currentView, setCurrentView] = useState<'home' | 'weather' | 'game' | 'rhythm' | 'survivor' | 'fluidcore' | 'chronoshatter' | 'etf' | 'screener'>('home')
+  const [currentView, setCurrentView] = useState<'home' | 'weather' | 'game' | 'rhythm' | 'survivor' | 'fluidcore' | 'chronoshatter' | 'etf' | 'screener' | 'fibo'>('home')
 
   return (
     <>
       {currentView === 'home' && (
-        <Home onAppClick={(appId) => setCurrentView(appId as 'home' | 'weather' | 'game' | 'rhythm' | 'survivor' | 'fluidcore' | 'chronoshatter' | 'etf' | 'screener')} />
+        <Home onAppClick={(appId) => setCurrentView(appId as any)} />
       )}
       {currentView === 'weather' && (
         <WeatherApp onBack={() => setCurrentView('home')} />
@@ -40,6 +41,9 @@ export default function App() {
       )}
       {currentView === 'screener' && (
         <StockScreenerApp onBack={() => setCurrentView('home')} />
+      )}
+      {currentView === 'fibo' && (
+        <StockStrategyApp onBack={() => setCurrentView('home')} />
       )}
     </>
   )
