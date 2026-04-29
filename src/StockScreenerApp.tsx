@@ -291,15 +291,15 @@ export default function StockScreenerApp({ onBack }: { onBack: () => void }) {
                 }
                 
                 // 確保時間軸是從小到大排序 (指標計算必備)
-                const combined = timestamps.map((t, idx) => ({ t, p: prices[idx], v: volumes[idx] }))
-                  .filter(item => item.p !== undefined)
-                  .sort((a, b) => a.t - b.t);
+                const combined = (timestamps as number[]).map((t: number, idx: number) => ({ t, p: prices[idx], v: volumes[idx] }))
+                  .filter((item: any) => item.p !== undefined)
+                  .sort((a: any, b: any) => a.t - b.t);
 
                 newRawStocksTemp[stock.sym] = {
                   name: stock.name,
-                  prices: combined.map(c => c.p),
-                  volumes: combined.map(c => c.v),
-                  timestamps: combined.map(c => c.t)
+                  prices: combined.map((c: any) => c.p),
+                  volumes: combined.map((c: any) => c.v),
+                  timestamps: combined.map((c: any) => c.t)
                 };
               }
             }
