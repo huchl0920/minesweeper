@@ -189,34 +189,10 @@ export default function StockScreenerApp({ onBack }: { onBack: () => void }) {
       const total = fullList.length;
       console.log(`[Screener] Found ${total} symbols`);
       
-      // --- 新增：全量快照捕獲 (強化版：自動偵測欄位) ---
+      // --- 恢復必要的輔助函數與快照地圖 ---
       const twseMasterMap: Record<string, { close: number; vol: number; volHistory: number[] }> = {};
       (window as any).twseMasterMap = twseMasterMap; 
       
-      // --- 新增：FinMind 批量歷史補網 (確保技術指標計算) ---
-      const historyMap: Record<string, { p: number[], v: number[], t: number[] }> = {};
-      try {
-        const thirtyDaysAgo = new Date();
-        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 40);
-        const startDate = thirtyDaysAgo.toISOString().split('T')[0];
-        
-        setStatusText(`正在補齊全台股歷史指標數據 (FinMind 批量模式)...`);
-        const hRes = await fetch(`/api/finmind/api/v4/data?dataset=TaiwanStockPrice&start_date=${startDate}`);
-        if (hRes.ok) {
-           const hJson = await hRes.json();
-           (hJson.data || []).forEach((item: any) => {
-              if (!historyMap[item.stock_id]) historyMap[item.stock_id] = { p: [], v: [], t: [] };
-              historyMap[item.stock_id].p.push(item.close);
-              historyMap[item.stock_id].v.push(item.Trading_Volume);
-              const ts = Math.floor(new Date(item.date).getTime() / 1000);
-              historyMap[item.stock_id].t.push(ts);
-           });
-           console.log(`[Screener] Batch history loaded for ${Object.keys(historyMap).length} symbols`);
-        }
-      } catch (e) {
-        console.warn('[Screener] Batch history failed:', e);
-      }
-
       const cleanN = (s: any) => {
         if (typeof s === 'number') return isNaN(s) ? 0 : s;
         const cleaned = String(s || '0').replace(/[^0-9.-]/g, '');
@@ -231,9 +207,7 @@ export default function StockScreenerApp({ onBack }: { onBack: () => void }) {
       };
 
       try {
-        setStatusText(`正在同步全台股快照 (採用 MI_INDEX 穩定接口)...`);
-        
-        // 使用最穩定的 MI_INDEX (全部) 接口
+        setStatusText(`正在同步全台股快照 (MI_INDEX)...`);
         const [tseRes, otcRes] = await Promise.all([
           fetch(`/api/twse_www/exchangeReport/MI_INDEX?response=json&type=ALLBUT0999`),
           fetch(`/api/tpex/openapi/v1/tpex_mainboard_quotes`)
@@ -241,120 +215,114 @@ export default function StockScreenerApp({ onBack }: { onBack: () => void }) {
 
         if (tseRes.ok) {
           const tseData = await tseRes.json();
-          // MI_INDEX 結構通常在 tables 陣列中，尋找「每日收盤行情」
           const table = (tseData.tables || []).find((t: any) => t.title?.includes('每日收盤行情')) || 
                         (tseData.data9 ? { fields: tseData.fields9, data: tseData.data9 } : null);
-          
           if (table && table.data) {
             const f = table.fields || [];
-            const cIdx = f.findIndex((n: string) => n.includes('代號')) >= 0 ? f.findIndex((n: string) => n.includes('代號')) : 0;
-            const vIdx = f.findIndex((n: string) => n.includes('成交股數')) >= 0 ? f.findIndex((n: string) => n.includes('成交股數')) : 2;
-            const pIdx = f.findIndex((n: string) => n.includes('收盤價')) >= 0 ? f.findIndex((n: string) => n.includes('收盤價')) : 8;
-            
+            const cIdx = Math.max(0, f.findIndex((n: string) => n.includes('代號')));
+            const vIdx = Math.max(2, f.findIndex((n: string) => n.includes('成交股數')));
+            const pIdx = Math.max(8, f.findIndex((n: string) => n.includes('收盤價')));
             table.data.forEach((row: any[]) => {
-              if (Array.isArray(row)) {
-                saveToMap(row[cIdx], cleanN(row[pIdx]), cleanN(row[vIdx]));
-              }
+              if (Array.isArray(row)) saveToMap(row[cIdx], cleanN(row[pIdx]), cleanN(row[vIdx]));
             });
           }
         }
-
         if (otcRes.ok) {
           const otcData = await otcRes.json();
           const items = Array.isArray(otcData) ? otcData : (otcData.data || []);
           items.forEach((s: any) => {
-             if (Array.isArray(s)) {
-               // 上櫃陣列格式備援
-               saveToMap(s[0], cleanN(s[2]), cleanN(s[7]));
-             } else {
-               saveToMap(s.SecuritiesCompanyCode || s.stock_id || s.Code, cleanN(s.Close || s.ClosingPrice), cleanN(s.TradingShares || s.TradeVolume));
-             }
+            if (Array.isArray(s)) saveToMap(s[0], cleanN(s[2]), cleanN(s[7]));
+            else saveToMap(s.Code || s.stock_id, cleanN(s.Close || s.ClosingPrice), cleanN(s.TradeVolume || s.TradingShares));
           });
         }
         setSnapshotCount(Object.keys(twseMasterMap).length);
-      } catch (e) {
-        console.error('[Screener] Snapshot failed:', e);
-      }
-      // ----------------------------------------
+      } catch (e) { console.warn('Snapshot error', e); }
 
-      const batchSize = 20; 
+      const batchSize = 10;
       const newRawStocksTemp: typeof rawStocks = {};
+      const thirtyDaysAgo = new Date();
+      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 90); // 抓 90 天確保指標充足
+      const startDate = thirtyDaysAgo.toISOString().split('T')[0];
       
       for (let i = 0; i < fullList.length; i += batchSize) {
+        if (isCancelled()) return;
         const batch = fullList.slice(i, i + batchSize);
-        const symbols = batch.map((s: any) => s.sym).join(',');
         
-        let success = false;
-        let retryCount = 0;
-        
-        while (!success && retryCount < 2) {
+        await Promise.all(batch.map(async (stock: any) => {
           try {
-            console.log(`[Screener] Fetching batch ${i/batchSize}...`);
+            // 優先嘗試 Yahoo (3個月)
+            let hRes = await fetch(`/api/yahoo/v8/finance/chart/${stock.sym}?range=3mo&interval=1d`);
+            let hData: any = null;
             
-            // 策略：放棄逐檔抓取以避免 401 封鎖，改用更穩定的批量方式
-            // 此處我們嘗試透過 Yahoo Quote 獲取基本面，並利用之前的快照作為歷史
-            let quotes: any[] = [];
-            try {
-              const qRes = await fetch(`/api/yahoo/v7/finance/quote?symbols=${symbols}`);
-              if (qRes.ok) quotes = (await qRes.json()).quoteResponse?.result || [];
-            } catch { /* ignore */ }
-
-            batch.forEach((stock: any) => {
-              const quote = quotes.find((q: any) => q.symbol === stock.sym);
-              const existingSnapshot = twseMasterMap[stock.code];
-              const history = historyMap[stock.code];
-              
-              const currentP = quote?.regularMarketPrice || existingSnapshot?.close || (history?.p ? history.p[history.p.length - 1] : 0);
-              const currentV = existingSnapshot?.vol || quote?.regularMarketVolume || (history?.v ? history.v[history.v.length - 1] : 0);
-
-              if (currentP > 0) {
-                // 合併歷史數據與今日快照
-                let prices = history?.p ? [...history.p] : [currentP];
-                let volumes = history?.v ? [...history.v] : [currentV];
-                let timestamps = history?.t ? [...history.t] : [Math.floor(Date.now()/1000)];
-
-                // 如果最後一筆不是今天，補上今天
-                if (existingSnapshot) {
-                  prices.push(existingSnapshot.close);
-                  volumes.push(existingSnapshot.vol);
-                  timestamps.push(Math.floor(Date.now()/1000));
+            if (hRes.ok) {
+              hData = await hRes.json();
+            } else {
+              // Yahoo 失敗，秒切 FinMind 備援
+              const fRes = await fetch(`/api/finmind/api/v4/data?dataset=TaiwanStockPrice&stock_id=${stock.code}&start_date=${startDate}`);
+              if (fRes.ok) {
+                const fJson = await fRes.ok ? await fRes.json() : null;
+                if (fJson && fJson.data) {
+                  hData = { 
+                    chart: { result: [{
+                      timestamp: fJson.data.map((d: any) => Math.floor(new Date(d.date).getTime()/1000)),
+                      indicators: { quote: [{
+                        close: fJson.data.map((d: any) => d.close),
+                        volume: fJson.data.map((d: any) => d.Trading_Volume)
+                      }]}
+                    }]}
+                  };
                 }
+              }
+            }
+
+            if (hData) {
+              const res = hData.chart?.result?.[0];
+              const indicators = res?.indicators?.quote?.[0];
+              if (indicators && indicators.close) {
+                let prices = (indicators.close as any[]).filter(p => p !== null);
+                let volumes = (indicators.volume as any[]).filter(v => v !== null);
+                let timestamps = res.timestamp || [];
+                
+                const existingSnapshot = twseMasterMap[stock.code];
+                if (existingSnapshot && prices.length > 0) {
+                   prices.push(existingSnapshot.close);
+                   volumes.push(existingSnapshot.vol);
+                   timestamps.push(Math.floor(Date.now()/1000));
+                }
+                
+                // 確保時間軸是從小到大排序 (指標計算必備)
+                const combined = timestamps.map((t, idx) => ({ t, p: prices[idx], v: volumes[idx] }))
+                  .filter(item => item.p !== undefined)
+                  .sort((a, b) => a.t - b.t);
 
                 newRawStocksTemp[stock.sym] = {
                   name: stock.name,
-                  prices,
-                  volumes,
-                  timestamps
+                  prices: combined.map(c => c.p),
+                  volumes: combined.map(c => c.v),
+                  timestamps: combined.map(c => c.t)
                 };
               }
-            });
-            success = true;
-          } catch (err) {
-            console.warn(`[Screener] Batch fail (retry ${retryCount}):`, err);
-            retryCount++;
-            await new Promise(r => setTimeout(r, 1000));
-          }
-        }
-        
-        
-        if (isCancelled()) return;
-        setProgress(Math.min(95, Math.round(((i + batchSize) / total) * 100)));
+            }
+          } catch { /* ignore individual */ }
+        }));
+
+        setProgress(Math.min(99, Math.round(((i + batchSize) / total) * 100)));
         setStatusText(`正在統整大數據指標... (${Object.keys(newRawStocksTemp).length} / ${total})`);
+        // 適度延遲避免被封鎖
+        await new Promise(r => setTimeout(r, 200));
+        
+        // 每 100 檔更新一次介面，讓使用者看到動態
+        if (i % 100 === 0) setRawStocks({ ...newRawStocksTemp });
       }
       
-      if (isCancelled()) return;
-      // 最終一次性更新，避免過程中的重複渲染
       setRawStocks(newRawStocksTemp);
       setProgress(100);
       setStatusText('✅ 資料採集完成');
       setTimeout(() => setStatusText(''), 3000);
     } catch (e) {
-      console.error('[Screener] Load Fatal:', e);
-      setStatusText('連線不穩定');
+      console.error('Fatal Load Error', e);
     } finally {
-      if (!isCancelled()) {
-        setLoading(false);
-      }
+      setLoading(false);
     }
   }, [calculateIndicators]);
 
