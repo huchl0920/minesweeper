@@ -14,12 +14,20 @@ export default defineConfig({
       '/api/twse_www': {
         target: 'https://www.twse.com.tw',
         changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/api\/twse_www/, '')
+        rewrite: (path) => path.replace(/^\/api\/twse_www/, ''),
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          'Referer': 'https://www.twse.com.tw/'
+        }
       },
       '/api/twse': {
         target: 'https://mis.twse.com.tw',
         changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/api\/twse/, '')
+        rewrite: (path) => path.replace(/^\/api\/twse/, ''),
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          'Referer': 'https://mis.twse.com.tw/'
+        }
       },
       '/api/yahoo': {
         target: 'https://query2.finance.yahoo.com',
@@ -34,7 +42,11 @@ export default defineConfig({
       '/api/tpex': {
         target: 'https://www.tpex.org.tw',
         changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/api\/tpex/, '')
+        rewrite: (path) => path.replace(/^\/api\/tpex/, ''),
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          'Referer': 'https://www.tpex.org.tw/'
+        }
       },
       '/api/finmind': {
         target: 'https://api.finmindtrade.com',
@@ -44,7 +56,11 @@ export default defineConfig({
       '/api/twse_open': {
         target: 'https://openapi.twse.com.tw',
         changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/api\/twse_open/, '')
+        rewrite: (path) => path.replace(/^\/api\/twse_open/, ''),
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          'Referer': 'https://openapi.twse.com.tw/'
+        }
       }
     }
   }

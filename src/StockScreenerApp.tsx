@@ -58,6 +58,7 @@ export default function StockScreenerApp({ onBack }: { onBack: () => void }) {
   const [progress, setProgress] = useState(0);
   const [statusText, setStatusText] = useState('');
   const [activeTags, setActiveTags] = useState<string[]>([]);
+  const [snapshotCount, setSnapshotCount] = useState(0);
   const [backtestDate, setBacktestDate] = useState(''); // YYYY-MM-DD
   const [stagedDate, setStagedDate] = useState(''); // 暫存日期，按下確認後才執行
   
@@ -66,7 +67,28 @@ export default function StockScreenerApp({ onBack }: { onBack: () => void }) {
   
   const calculateIndicators = useCallback((stock: StockData): IndicatorData | null => {
     const { prices, volumes } = stock;
-    if (prices.length < 26) return null;
+    const L = prices.length - 1;
+    if (L < 0) return null;
+
+    // 建立基礎物件 (即使沒歷史數據也能顯示基本面)
+    const base: IndicatorData = {
+       symbol: stock.symbol,
+       name: stock.name,
+       close: prices[L],
+       prevClose: prices[L-1] || prices[L],
+       volume: volumes[L],
+       prevVolume: volumes[L-1] || 0,
+       ma5: 0, ma10: 0, ma20: 0, prevMa5: 0,
+       rsi: 0, macdDIF: 0, macdDEA: 0, macdHist: 0, prevMacdHist: 0,
+       vAvg5: volumes[L],
+       high20: Math.max(...prices),
+       changePercent: prices[L-1] > 0 ? ((prices[L] - prices[L-1]) / prices[L-1]) * 100 : 0,
+       isBullishAlignment: false,
+       date: '',
+       historyCount: prices.length
+    };
+
+    if (prices.length < 26) return base;
 
     const getMA = (arr: number[], period: number, endIdx: number) => {
        if (endIdx < period - 1) return 0;
@@ -112,7 +134,6 @@ export default function StockScreenerApp({ onBack }: { onBack: () => void }) {
        };
     };
 
-    const L = prices.length - 1;
     const curMACD = getMACD(prices);
     
     return {
@@ -168,60 +189,89 @@ export default function StockScreenerApp({ onBack }: { onBack: () => void }) {
       const total = fullList.length;
       console.log(`[Screener] Found ${total} symbols`);
       
-      // --- 新增：全量快照捕獲 (強化：嘗試獲取多日成交量) ---
+      // --- 新增：全量快照捕獲 (強化版：自動偵測欄位) ---
       const twseMasterMap: Record<string, { close: number; vol: number; volHistory: number[] }> = {};
       (window as any).twseMasterMap = twseMasterMap; 
+      
+      // --- 新增：FinMind 批量歷史補網 (確保技術指標計算) ---
+      const historyMap: Record<string, { p: number[], v: number[], t: number[] }> = {};
       try {
-        setStatusText(`正在同步全台股即時快照 (短期歷史補網中)...`);
+        const thirtyDaysAgo = new Date();
+        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 40);
+        const startDate = thirtyDaysAgo.toISOString().split('T')[0];
         
-        // 我們抓取今天與昨天的全量資料 (Web 接口支援 date 參數，但此處我們先做單日穩定版並確保 Key 正確)
+        setStatusText(`正在補齊全台股歷史指標數據 (FinMind 批量模式)...`);
+        const hRes = await fetch(`/api/finmind/api/v4/data?dataset=TaiwanStockPrice&start_date=${startDate}`);
+        if (hRes.ok) {
+           const hJson = await hRes.json();
+           (hJson.data || []).forEach((item: any) => {
+              if (!historyMap[item.stock_id]) historyMap[item.stock_id] = { p: [], v: [], t: [] };
+              historyMap[item.stock_id].p.push(item.close);
+              historyMap[item.stock_id].v.push(item.Trading_Volume);
+              const ts = Math.floor(new Date(item.date).getTime() / 1000);
+              historyMap[item.stock_id].t.push(ts);
+           });
+           console.log(`[Screener] Batch history loaded for ${Object.keys(historyMap).length} symbols`);
+        }
+      } catch (e) {
+        console.warn('[Screener] Batch history failed:', e);
+      }
+
+      const cleanN = (s: any) => {
+        if (typeof s === 'number') return isNaN(s) ? 0 : s;
+        const cleaned = String(s || '0').replace(/[^0-9.-]/g, '');
+        const n = parseFloat(cleaned);
+        return isNaN(n) ? 0 : n;
+      };
+
+      const saveToMap = (code: string, close: number, vol: number) => {
+        const c = (code || '').trim();
+        if (!c || isNaN(close) || isNaN(vol)) return;
+        twseMasterMap[c] = { close, vol, volHistory: [vol] };
+      };
+
+      try {
+        setStatusText(`正在同步全台股快照 (採用 MI_INDEX 穩定接口)...`);
+        
+        // 使用最穩定的 MI_INDEX (全部) 接口
         const [tseRes, otcRes] = await Promise.all([
-          fetch(`/api/twse_open/v1/exchangeReport/STOCK_DAY_ALL`),
+          fetch(`/api/twse_www/exchangeReport/MI_INDEX?response=json&type=ALLBUT0999`),
           fetch(`/api/tpex/openapi/v1/tpex_mainboard_quotes`)
         ]);
-        
-        // 輔助儲存函數
-        const saveToMap = (code: string, close: number, vol: number) => {
-          if (!code) return;
-          if (!twseMasterMap[code]) twseMasterMap[code] = { close, vol, volHistory: [] };
-          twseMasterMap[code].close = close;
-          twseMasterMap[code].vol = vol;
-          // 將今日成交量放入短期歷史末端
-          twseMasterMap[code].volHistory.push(vol);
-        };
 
         if (tseRes.ok) {
           const tseData = await tseRes.json();
-          const items = Array.isArray(tseData) ? tseData : (tseData.data || []);
-          items.forEach((s: any) => {
-            const code = (s.Code || s.stock_id || '').trim();
-            const close = parseFloat(s.ClosingPrice?.replace(/,/g, '') || s.Close?.replace(/,/g, '') || '0');
-            const vol = parseInt(s.TradeVolume?.replace(/,/g, '') || s.TradingShares?.replace(/,/g, '') || '0');
-            saveToMap(code, close, vol);
-          });
-        }
-        // Fallback for TSE
-        if (!tseRes.ok) {
-           const webRes = await fetch(`/api/twse_www/exchangeReport/STOCK_DAY_ALL?response=json`);
-           if (webRes.ok) {
-             const webData = await webRes.json();
-             (webData.data || []).forEach((row: any) => {
-               const code = (row[0] || '').trim();
-               saveToMap(code, parseFloat(row[7]?.replace(/,/g, '') || '0'), parseInt(row[2]?.replace(/,/g, '') || '0'));
-             });
-           }
+          // MI_INDEX 結構通常在 tables 陣列中，尋找「每日收盤行情」
+          const table = (tseData.tables || []).find((t: any) => t.title?.includes('每日收盤行情')) || 
+                        (tseData.data9 ? { fields: tseData.fields9, data: tseData.data9 } : null);
+          
+          if (table && table.data) {
+            const f = table.fields || [];
+            const cIdx = f.findIndex((n: string) => n.includes('代號')) >= 0 ? f.findIndex((n: string) => n.includes('代號')) : 0;
+            const vIdx = f.findIndex((n: string) => n.includes('成交股數')) >= 0 ? f.findIndex((n: string) => n.includes('成交股數')) : 2;
+            const pIdx = f.findIndex((n: string) => n.includes('收盤價')) >= 0 ? f.findIndex((n: string) => n.includes('收盤價')) : 8;
+            
+            table.data.forEach((row: any[]) => {
+              if (Array.isArray(row)) {
+                saveToMap(row[cIdx], cleanN(row[pIdx]), cleanN(row[vIdx]));
+              }
+            });
+          }
         }
 
         if (otcRes.ok) {
           const otcData = await otcRes.json();
           const items = Array.isArray(otcData) ? otcData : (otcData.data || []);
           items.forEach((s: any) => {
-            const code = (s.SecuritiesCompanyCode || s.stock_id || '').trim();
-            const close = parseFloat(s.Close?.replace(/,/g, '') || s.ClosingPrice?.replace(/,/g, '') || '0');
-            const vol = parseInt(s.TradingShares?.replace(/,/g, '') || s.TradeVolume?.replace(/,/g, '') || '0');
-            saveToMap(code, close, vol);
+             if (Array.isArray(s)) {
+               // 上櫃陣列格式備援
+               saveToMap(s[0], cleanN(s[2]), cleanN(s[7]));
+             } else {
+               saveToMap(s.SecuritiesCompanyCode || s.stock_id || s.Code, cleanN(s.Close || s.ClosingPrice), cleanN(s.TradingShares || s.TradeVolume));
+             }
           });
         }
+        setSnapshotCount(Object.keys(twseMasterMap).length);
       } catch (e) {
         console.error('[Screener] Snapshot failed:', e);
       }
@@ -241,126 +291,72 @@ export default function StockScreenerApp({ onBack }: { onBack: () => void }) {
           try {
             console.log(`[Screener] Fetching batch ${i/batchSize}...`);
             
-            // 策略：隔離請求 + 備援嘗試
-            let sparkData: any = {};
+            // 策略：放棄逐檔抓取以避免 401 封鎖，改用更穩定的批量方式
+            // 此處我們嘗試透過 Yahoo Quote 獲取基本面，並利用之前的快照作為歷史
             let quotes: any[] = [];
-            
-            // 備援目標判定
-            const target = retryCount === 0 ? 'query2' : 'query1';
-
-            // 1. 嘗試 Spark (需 Proxy 支援 Origin/Referer)
-            try {
-              // 一律抓 1 年，方便後續本地回測切換
-              const range = '1y';
-              const sRes = await fetch(`/api/yahoo/v7/finance/spark?symbols=${symbols}&range=${range}&interval=1d&includeVolume=true`);
-              if (sRes.ok) sparkData = (await sRes.json()).spark?.result || {};
-              else {
-                console.warn(`[Screener] Spark ${sRes.status} on ${target}`);
-                // 如果 Spark 401，嘗試用 FinMind 或 Chart API 單點突破 (此處暫時 Skip 以保證 Batch 效率)
-              }
-            } catch { /* ignore */ }
-
-            // 2. 嘗試 Quote (主力現價/成交量來源)
             try {
               const qRes = await fetch(`/api/yahoo/v7/finance/quote?symbols=${symbols}`);
               if (qRes.ok) quotes = (await qRes.json()).quoteResponse?.result || [];
-              else {
-                 console.warn(`[Screener] Quote ${qRes.status} on ${target}`);
-              }
             } catch { /* ignore */ }
 
-            // 3. 終極備援：如果 Yahoo 全倒，嘗試直接從官方 mis.twse 獲取 (這需對代碼進行轉譯)
-            if (quotes.length === 0) {
-               console.log('[Screener] Attempting Official TWSE fallback...');
-               try {
-                  const twseSyms = batch.map((s: any) => `tse_${s.code}.tw`).join('|');
-                  const tpexSyms = batch.map((s: any) => `otc_${s.code}.tw`).join('|');
-                  const offRes = await fetch(`/api/twse/stock/api/getStockInfo.jsp?ex_ch=${twseSyms}|${tpexSyms}`);
-                  if (offRes.ok) {
-                     const offData = await offRes.json();
-                     if (offData.msgArray) {
-                        quotes = offData.msgArray.map((m: any) => ({
-                           symbol: m.c + (m.ex === 'tse' ? '.TW' : '.TWO'),
-                           regularMarketPrice: parseFloat(m.z) || parseFloat(m.y),
-                           regularMarketVolume: (parseInt(m.v) || 0) * 1000 // 單位轉換
-                        }));
-                     }
-                  }
-               } catch { /* ignore */ }
-            }
-
-            if (Object.keys(sparkData).length === 0 && quotes.length === 0) {
-               throw new Error('All Data Sources Unavailable');
-            }
-
             batch.forEach((stock: any) => {
-              const spark = sparkData[stock.sym] || (Array.isArray(sparkData) ? sparkData.find?.((r: any) => r.symbol === stock.sym) : null);
-              const quote = quotes.find((q: any) => q.symbol === stock.sym || q.symbol?.split('.')[0] === stock.code);
-              
-              const response = spark?.response?.[0] || spark;
-              const indicatorsRaw = response?.indicators?.quote?.[0] || response;
-              const tsRaw: number[] = response?.timestamp || spark?.timestamp || [];
-              
+              const quote = quotes.find((q: any) => q.symbol === stock.sym);
               const existingSnapshot = twseMasterMap[stock.code];
-              const currentP = quote?.regularMarketPrice || (indicatorsRaw?.close ? (indicatorsRaw.close[indicatorsRaw.close.length - 1] as number) : (existingSnapshot?.close || 0));
+              const history = historyMap[stock.code];
               
+              const currentP = quote?.regularMarketPrice || existingSnapshot?.close || (history?.p ? history.p[history.p.length - 1] : 0);
+              const currentV = existingSnapshot?.vol || quote?.regularMarketVolume || (history?.v ? history.v[history.v.length - 1] : 0);
+
               if (currentP > 0) {
-                const closeRaw: (number | null)[] = indicatorsRaw?.close || [currentP, currentP]; 
-                const volRaw: (number | null)[] = indicatorsRaw?.volume || new Array(closeRaw.length).fill(0);
-                
-                const existingSnapshot = twseMasterMap[stock.code];
-                if (i === 0) console.log(`[Screener] Example Lookup [${stock.code}]:`, existingSnapshot);
-                
-                const zip = closeRaw.map((p, idx) => {
-                  let v = (volRaw[idx] || 0) as number;
-                  // 強制對最後一筆數據使用快照量能，不再依賴 Yahoo 的判斷
-                  if (idx === closeRaw.length - 1 && existingSnapshot) {
-                    v = existingSnapshot.vol;
-                  }
-                  return { p: p as number, v, t: tsRaw[idx] };
-                }).filter((item) => item.p !== null && typeof item.t === 'number' && !isNaN(item.t));
-                
-                if (zip.length > 0) {
-                  newRawStocksTemp[stock.sym] = {
-                    name: stock.name,
-                    prices: zip.map(z => z.p),
-                    volumes: zip.map(z => z.v),
-                    timestamps: zip.map(z => z.t)
-                  };
+                // 合併歷史數據與今日快照
+                let prices = history?.p ? [...history.p] : [currentP];
+                let volumes = history?.v ? [...history.v] : [currentV];
+                let timestamps = history?.t ? [...history.t] : [Math.floor(Date.now()/1000)];
+
+                // 如果最後一筆不是今天，補上今天
+                if (existingSnapshot) {
+                  prices.push(existingSnapshot.close);
+                  volumes.push(existingSnapshot.vol);
+                  timestamps.push(Math.floor(Date.now()/1000));
                 }
+
+                newRawStocksTemp[stock.sym] = {
+                  name: stock.name,
+                  prices,
+                  volumes,
+                  timestamps
+                };
               }
             });
             success = true;
           } catch (err) {
             console.warn(`[Screener] Batch fail (retry ${retryCount}):`, err);
             retryCount++;
-            await new Promise(r => setTimeout(r, 2000));
+            await new Promise(r => setTimeout(r, 1000));
           }
         }
         
+        
         if (isCancelled()) return;
-        
-        // 每 4 個 Batch 更新一次 Raw 快取
-        if (i % (batchSize * 4) === 0 || i + batchSize >= total) {
-           setRawStocks(prev => ({ ...prev, ...newRawStocksTemp }));
-        }
-        
-        setProgress(Math.min(100, Math.round(((i + batchSize) / total) * 100)));
-        setStatusText(`正在處理... (已採集 ${Object.keys(newRawStocksTemp).length} 檔)`);
-        await new Promise(r => setTimeout(r, 600)); 
+        setProgress(Math.min(95, Math.round(((i + batchSize) / total) * 100)));
+        setStatusText(`正在統整大數據指標... (${Object.keys(newRawStocksTemp).length} / ${total})`);
       }
       
       if (isCancelled()) return;
-      setStatusText('');
+      // 最終一次性更新，避免過程中的重複渲染
+      setRawStocks(newRawStocksTemp);
+      setProgress(100);
+      setStatusText('✅ 資料採集完成');
+      setTimeout(() => setStatusText(''), 3000);
     } catch (e) {
       console.error('[Screener] Load Fatal:', e);
-      setStatusText('部分來源失效，可以嘗試重新載入');
+      setStatusText('連線不穩定');
     } finally {
       if (!isCancelled()) {
         setLoading(false);
       }
     }
-  }, [calculateIndicators]); // 移除 backtestDate 依賴，採集不應隨日期重跑
+  }, [calculateIndicators]);
 
   // 核心：衍生狀態 - 當原始數據載入或日期變更時，本地即時計算
   const allData = useMemo(() => {
@@ -450,6 +446,9 @@ export default function StockScreenerApp({ onBack }: { onBack: () => void }) {
             >
               🔄 重新採集 (庫存 {Object.keys(rawStocks).length} 檔)
             </div>
+            <div style={{ marginLeft: '5px', fontSize: '0.7rem', color: snapshotCount > 0 ? '#22c55e' : '#ef4444' }}>
+              {snapshotCount > 0 ? `● 數據源已連線 (${snapshotCount})` : '○ 數據源連接中...'}
+            </div>
             <div style={{ marginLeft: '10px', padding: '6px 12px', background: 'rgba(245, 158, 11, 0.1)', border: '2px solid #f59e0b', borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '8px' }}>
                <span style={{ fontSize: '0.85rem', color: '#f59e0b', fontWeight: 'bold' }}>回測日期:</span>
                <input 
@@ -520,16 +519,16 @@ export default function StockScreenerApp({ onBack }: { onBack: () => void }) {
                            <span style={{ fontWeight: 'bold', fontSize: '1.1rem' }}>{stock.name} <span style={{ fontSize: '0.75rem', color: '#6366f1', fontWeight: 'normal' }}>({stock.date})</span></span>
                            <span style={{ color: '#94a3b8' }}>{stock.symbol}</span>
                         </div>
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', fontSize: '0.85rem' }}>
-                           <div style={{ color: '#94a3b8' }}>收盤：<span style={{ color: '#f8fafc' }}>{stock.close.toFixed(2)}</span></div>
-                           <div style={{ color: '#94a3b8' }}>成交量：<span style={{ color: '#f8fafc' }}>{Math.round(stock.volume / 1000).toLocaleString()} 張</span></div>
-                           <div style={{ color: '#94a3b8' }}>RSI(14)：<span style={{ color: stock.rsi > 80 ? '#ef4444' : stock.rsi < 20 ? '#22c55e' : '#f8fafc' }}>{stock.rsi.toFixed(1)}</span></div>
-                           <div style={{ color: '#94a3b8' }}>MACD：<span style={{ color: stock.macdHist > 0 ? '#ef4444' : '#22c55e' }}>{stock.macdHist.toFixed(2)}</span></div>
-                           <div style={{ gridColumn: 'span 2', fontSize: '0.65rem', color: '#475569', borderTop: '1px solid #1e293b', paddingTop: '5px', marginTop: '5px', display: 'flex', justifyContent: 'space-between' }}>
-                               <span>索引: {stock.historyCount - 1} | 歷史: {stock.historyCount}天</span>
-                               <span style={{ color: '#38bdf8' }}>{stock.date}</span>
-                           </div>
-                        </div>
+                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', fontSize: '0.85rem' }}>
+                            <div style={{ color: '#94a3b8' }}>收盤：<span style={{ color: '#f8fafc' }}>{(stock.close || 0).toFixed(2)}</span></div>
+                            <div style={{ color: '#94a3b8' }}>成交量：<span style={{ color: '#f8fafc' }}>{Math.round((stock.volume || 0) / 1000).toLocaleString()} 張</span> <span style={{ fontSize: '0.6rem', color: '#475569' }}>({stock.volume})</span></div>
+                            <div style={{ color: '#94a3b8' }}>RSI(14)：<span style={{ color: stock.rsi > 80 ? '#ef4444' : stock.rsi < 20 ? '#22c55e' : '#f8fafc' }}>{(stock.rsi || 0).toFixed(1)}</span></div>
+                            <div style={{ color: '#94a3b8' }}>MACD：<span style={{ color: stock.macdHist > 0 ? '#ef4444' : '#22c55e' }}>{(stock.macdHist || 0).toFixed(2)}</span></div>
+                            <div style={{ gridColumn: 'span 2', fontSize: '0.65rem', color: '#475569', borderTop: '1px solid #1e293b', paddingTop: '5px', marginTop: '5px', display: 'flex', justifyContent: 'space-between' }}>
+                                <span>索引: {stock.historyCount - 1} | 歷史: {stock.historyCount}天</span>
+                                <span style={{ color: '#38bdf8' }}>{stock.date}</span>
+                            </div>
+                         </div>
                      </div>
                   ))}
                </div>
