@@ -102,7 +102,7 @@ export function calculateFiboStrategy(
       }
     } else {
       const historicSlice = data.slice(0, i + 1);
-      const signal = getRawSignal(symbol, historicSlice, window, targetLevel);
+      const signal = getRawSignal(historicSlice, window, targetLevel);
       if (signal.hasSignal) {
         activeTrade = {
           entryPrice: signal.entry!,
@@ -125,8 +125,9 @@ export function calculateFiboStrategy(
   }
 
   // 如果不在持股中，檢查「今天」是否有新訊號
-  const finalSignal = getRawSignal(symbol, data, window, targetLevel);
+  const finalSignal = getRawSignal(data, window, targetLevel);
   return {
+    symbol,
     ...finalSignal,
     state: finalSignal.hasSignal ? 'HOLDING' : 'WAITING_ENTRY',
     levels
@@ -136,7 +137,7 @@ export function calculateFiboStrategy(
 /**
  * 原始訊號判斷邏輯
  */
-function getRawSignal(symbol: string, data: IStockDataPoint[], window: number, targetLevel: number) {
+function getRawSignal(data: IStockDataPoint[], window: number, targetLevel: number) {
   if (data.length < window) return { hasSignal: false };
   const recentData = data.slice(-window);
   const swingHigh = Math.max(...recentData.map(d => d.high));
@@ -212,7 +213,7 @@ export function runBacktest(
       }
     } else {
       const historicSlice = data.slice(0, i + 1);
-      const signal = getRawSignal(symbol, historicSlice, strategyWindow, 0.236);
+      const signal = getRawSignal(historicSlice, strategyWindow, 0.236);
 
       if (signal.hasSignal && signal.entry && signal.tp && signal.sl) {
         activeTrade = {
