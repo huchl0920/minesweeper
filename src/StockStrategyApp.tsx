@@ -107,13 +107,14 @@ async function fetchHistory(code: string): Promise<{ date: string; close: number
 }
 
 // ── Multi-factor scoring ────────────────────────────
-async function analyzeStock(code: string, sym: string, name: string): Promise<IRadarCandidate | null> {
+async function analyzeStock(sym: string, name: string): Promise<IRadarCandidate | null> {
   try {
-    const rawHist = await fetchHistory(code);
-    if (rawHist.length < 80) return null;
+    // 使用原本穩定運作的 fetchYahooHistory (with upgraded proxy headers)
+    const hist = await fetchYahooHistory(sym, '1y');
+    if (hist.length < 80) return null;
 
-    const closes  = rawHist.map(d => d.close);
-    const volumes = rawHist.map(d => d.volume);
+    const closes  = hist.map(d => d.close);
+    const volumes = hist.map(d => d.volume);
     const L = closes.length - 1;
 
     // ── 前置過濾 (不計分，直接淘汰) ──────────────────
@@ -140,7 +141,7 @@ async function analyzeStock(code: string, sym: string, name: string): Promise<IR
     if (currRsi >= 50 && currRsi <= 72) { score += 15; reasons.push(`RSI ${currRsi.toFixed(0)}`); }
 
     // 因子 C: 斐波那契突破 0.236 (20分)
-    const recent60 = rawHist.slice(-60);
+    const recent60 = hist.slice(-60);
     const swHigh = Math.max(...recent60.map(d => d.high));
     const swLow  = Math.min(...recent60.map(d => d.low));
     const diff   = swHigh - swLow;
@@ -181,8 +182,8 @@ async function analyzeStock(code: string, sym: string, name: string): Promise<IR
     // ── 1年歷史勝率回測 ───────────────────────────────
     let wins = 0, total = 0;
     // 用簡化版勝率：對最近 60 個交易日，若每次觸發突破後 10 天內碰 TP 為勝
-    for (let i = 60; i < rawHist.length - 1; i++) {
-      const slice = rawHist.slice(0, i + 1);
+    for (let i = 60; i < hist.length - 1; i++) {
+      const slice = hist.slice(0, i + 1);
       const sliceHigh = Math.max(...slice.slice(-60).map(d => d.high));
       const sliceLow  = Math.min(...slice.slice(-60).map(d => d.low));
       const sliceDiff = sliceHigh - sliceLow;
@@ -191,16 +192,16 @@ async function analyzeStock(code: string, sym: string, name: string): Promise<IR
         total++;
         const sigTP = sliceHigh;
         const sigSL = sliceHigh - sliceDiff * 0.382;
-        for (let j = i + 1; j < Math.min(i + 15, rawHist.length); j++) {
-          if (rawHist[j].high >= sigTP)  { wins++; break; }
-          if (rawHist[j].low  <= sigSL)  { break; }
+        for (let j = i + 1; j < Math.min(i + 15, hist.length); j++) {
+          if (hist[j].high >= sigTP)  { wins++; break; }
+          if (hist[j].low  <= sigSL)  { break; }
         }
       }
     }
     const winRate = total > 3 ? (wins / total) * 100 : 0;
     if (winRate < 50) return null;
 
-    const dataDate = rawHist[L].date;
+    const dataDate = hist[L].date;
     return { symbol: sym, name, score, winRate, entry, tp, sl: safesl, rr, reasons, currentPrice: closes[L], dataDate };
   } catch { return null; }
 }
@@ -316,43 +317,81 @@ export default function StockStrategyApp({ onBack, initialTab = 'backtest' }: Pr
         }
       } catch { /* 大盤取得失敗不阻止掃描 */ }
 
-      // ── Step 1: 從 TWSE + TPEX OpenAPI 取台股清單 ──────
-      // 這兩個是公開 API，不需要 token，不會被 403
-      setProgress({ cur: 0, total: 0, text: '📋 正在從 TWSE + TPEX 取得台股清單...' });
+      // ── Step 1: 從多個來源取得完整台股清單 ──────────────
+      setProgress({ cur: 0, total: 0, text: '📋 正在取得台股清單 (上市 + 上櫃)...' });
 
       const stockMap: Record<string, { code: string; name: string; sym: string }> = {};
 
+      // 來源 A: TWSE OpenAPI - 上市股 (~900檔)
       try {
         const twseRes = await fetch('/api/twse_open/v1/exchangeReport/STOCK_DAY_ALL');
         if (twseRes.ok) {
           const twseData = await twseRes.json();
           (Array.isArray(twseData) ? twseData : []).forEach((s: any) => {
-            const code = s.Code || s.stock_id;
-            if (/^[0-9]{4}$/.test(code)) {
-              stockMap[code] = { code, name: s.Name || s.stock_name || code, sym: code + '.TW' };
+            const code = s.Code || s.stock_id || s[0];
+            const name = s.Name || s.stock_name || s[1] || code;
+            if (typeof code === 'string' && /^[0-9]{4}$/.test(code)) {
+              stockMap[code] = { code, name, sym: code + '.TW' };
             }
           });
         }
       } catch { /* continue */ }
 
+      // 來源 B: TPEX OpenAPI - 上櫃股 (~800檔)
       try {
         const tpexRes = await fetch('/api/tpex/openapi/v1/tpex_mainboard_quotes');
         if (tpexRes.ok) {
           const tpexData = await tpexRes.json();
+          // TPEX 回應可能是 array of objects 或 array of arrays
           (Array.isArray(tpexData) ? tpexData : []).forEach((s: any) => {
-            const code = s.SecuritiesCompanyCode || s.Code;
-            if (code && /^[0-9]{4}$/.test(code) && !stockMap[code]) {
-              stockMap[code] = { code, name: s.CompanyName || s.Name || code, sym: code + '.TWO' };
+            const code = s.SecuritiesCompanyCode || s.Code || s.stockCode || s[0];
+            const name = s.CompanyName || s.Name || s.stockName || s[1] || code;
+            if (typeof code === 'string' && /^[0-9]{4}$/.test(code) && !stockMap[code]) {
+              stockMap[code] = { code, name, sym: code + '.TWO' };
             }
           });
         }
       } catch { /* continue */ }
 
-      const uniqueList = Object.values(stockMap);
-      if (uniqueList.length === 0) throw new Error('無法取得股票清單，請確認 TWSE/TPEX 服務是否正常。');
+      // 來源 C: TWSE 個股報價 (for OTC via different TPEX endpoint)
+      if (Object.keys(stockMap).length < 1200) {
+        try {
+          const otcRes = await fetch('/api/tpex/openapi/v1/tpex_otc_quotes');
+          if (otcRes.ok) {
+            const otcData = await otcRes.json();
+            (Array.isArray(otcData) ? otcData : []).forEach((s: any) => {
+              const code = s.SecuritiesCompanyCode || s.Code || s[0];
+              const name = s.CompanyName || s.Name || s[1] || code;
+              if (typeof code === 'string' && /^[0-9]{4}$/.test(code) && !stockMap[code]) {
+                stockMap[code] = { code, name, sym: code + '.TWO' };
+              }
+            });
+          }
+        } catch { /* continue */ }
+      }
 
-      setProgress({ cur: 0, total: uniqueList.length, text: `✅ 取得 ${uniqueList.length} 檔股票，開始逐一分析...` });
-      await new Promise(r => setTimeout(r, 500));
+      // 來源 D: FinMind 補漏（若前面來源不足 1200 檔）
+      if (Object.keys(stockMap).length < 1200) {
+        try {
+          const fmRes = await fetch('/api/finmind/api/v4/data?dataset=TaiwanStockInfo');
+          if (fmRes.ok) {
+            const fmJson = await fmRes.json();
+            (fmJson.data || []).forEach((r: any) => {
+              const code = r.stock_id;
+              if (/^[0-9]{4}$/.test(code) && !stockMap[code]) {
+                const isTW = r.type === 'tse' || r.type === 'twse';
+                stockMap[code] = { code, name: r.stock_name || code, sym: code + (isTW ? '.TW' : '.TWO') };
+              }
+            });
+          }
+        } catch { /* FinMind 可能 403，沒關係 */ }
+      }
+
+      const uniqueList = Object.values(stockMap);
+      if (uniqueList.length === 0) throw new Error('無法取得股票清單，請稍後再試。');
+
+      setProgress({ cur: 0, total: uniqueList.length, text: `✅ 取得 ${uniqueList.length} 檔股票 (上市+上櫃)，開始逐一分析...` });
+      await new Promise(r => setTimeout(r, 800));
 
       const results: IRadarCandidate[] = [];
       const batchSize = 8;
@@ -361,7 +400,7 @@ export default function StockStrategyApp({ onBack, initialTab = 'backtest' }: Pr
         if (cancelRef.current) break;
         const batch = uniqueList.slice(i, i + batchSize);
         setProgress({ cur: i, total: uniqueList.length, text: `分析 ${i}/${uniqueList.length}　已找到 ${results.length} 檔候選　失敗 ${failCount} 檔` });
-        const batchResults = await Promise.all(batch.map(s => analyzeStock(s.code, s.sym, s.name).catch(() => { failCount++; return null; })));
+        const batchResults = await Promise.all(batch.map(s => analyzeStock(s.sym, s.name).catch(() => { failCount++; return null; })));
         batchResults.forEach(r => { if (r) results.push(r); });
       }
       results.sort((a, b) => b.score * b.winRate - a.score * a.winRate);
