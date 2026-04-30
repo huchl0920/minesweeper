@@ -113,8 +113,6 @@ async function analyzeStock(code: string, sym: string, name: string): Promise<IR
     if (rawHist.length < 80) return null;
 
     const closes  = rawHist.map(d => d.close);
-    const highs   = rawHist.map(d => d.high);
-    const lows    = rawHist.map(d => d.low);
     const volumes = rawHist.map(d => d.volume);
     const L = closes.length - 1;
 

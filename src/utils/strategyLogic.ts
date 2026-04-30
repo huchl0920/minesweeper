@@ -69,7 +69,6 @@ export function getRSI(data: number[], window: number = 14): number[] {
       rsi.push(0);
     } else {
       if (i > window) {
-        const prevDiff = data[i - 1] - data[i - 2];
         // 簡單移動平均平滑 (為了計算效率)
       }
       const avgGain = gains / window;
