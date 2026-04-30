@@ -42,31 +42,66 @@ export interface IBacktestTrade {
 }
 
 /**
- * 抓取 Yahoo 歷史數據
+ * 抓取歷史數據 (Yahoo 優先，FinMind 備援)
  */
 export async function fetchYahooHistory(symbol: string, range: string = '1y'): Promise<IStockDataPoint[]> {
+  const code = symbol.replace(/[^0-9]/g, '');
   const formattedSymbol = /^[0-9]+$/.test(symbol) ? `${symbol}.TW` : symbol;
   const url = `/api/yahoo/v8/finance/chart/${formattedSymbol}?range=${range}&interval=1d`;
   
-  const response = await fetch(url);
-  if (!response.ok) throw new Error(`無法取得股票資料: ${response.statusText}`);
+  try {
+    const response = await fetch(url);
+    if (response.ok) {
+      const json = await response.json();
+      const result = json.chart.result?.[0];
+      if (result && result.timestamp) {
+        const { timestamp, indicators } = result;
+        const quote = indicators.quote[0];
+        const data = timestamp.map((ts: number, idx: number) => ({
+          timestamp: ts * 1000,
+          date: new Date(ts * 1000).toISOString().split('T')[0],
+          open: quote.open[idx] || quote.close[idx] || 0,
+          high: quote.high[idx] || quote.close[idx] || 0,
+          low: quote.low[idx] || quote.close[idx] || 0,
+          close: quote.close[idx] || 0,
+          volume: quote.volume[idx] || 0,
+        })).filter((d: any) => d.close > 0);
 
-  const json = await response.json();
-  const result = json.chart.result?.[0];
-  if (!result || !result.timestamp) throw new Error(`找不到股票代號 ${symbol}`);
+        if (data.length > 5) return data;
+      }
+    }
+  } catch (e) {
+    console.warn('[Fibo] Yahoo failed, falling back to FinMind...', e);
+  }
 
-  const { timestamp, indicators } = result;
-  const quote = indicators.quote[0];
+  // --- FinMind 備援路徑 ---
+  try {
+    const thirtyDaysAgo = new Date();
+    // 根據 range 決定天數
+    const days = range === '1y' ? 365 : (range === '1mo' ? 30 : 90);
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - days);
+    const startDate = thirtyDaysAgo.toISOString().split('T')[0];
+    
+    const fRes = await fetch(`/api/finmind/api/v4/data?dataset=TaiwanStockPrice&stock_id=${code}&start_date=${startDate}`);
+    if (fRes.ok) {
+      const fJson = await fRes.json();
+      if (fJson.data && fJson.data.length > 0) {
+        return fJson.data.map((d: any) => ({
+          timestamp: new Date(d.date).getTime(),
+          date: d.date,
+          open: d.open,
+          high: d.max,
+          low: d.min,
+          close: d.close,
+          volume: d.Trading_Volume,
+        }));
+      }
+    }
+  } catch (e) {
+    console.error('[Fibo] All data sources failed', e);
+  }
 
-  return timestamp.map((ts: number, idx: number) => ({
-    timestamp: ts * 1000,
-    date: new Date(ts * 1000).toISOString().split('T')[0],
-    open: quote.open[idx] || 0,
-    high: quote.high[idx] || 0,
-    low: quote.low[idx] || 0,
-    close: quote.close[idx] || 0,
-    volume: quote.volume[idx] || 0,
-  })).filter((d: any) => d.close > 0);
+  throw new Error(`無法取得 ${symbol} 的歷史數據，請確認代號正確或稍後再試。`);
 }
 
 /**

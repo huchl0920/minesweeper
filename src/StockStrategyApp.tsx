@@ -1,10 +1,13 @@
 import React, { useState } from 'react';
 import './StockStrategyApp.css';
-import { runBacktest, fetchYahooHistory, calculateFiboStrategy } from './utils/fiboLogic';
+import { fetchYahooHistory } from './utils/fiboLogic';
+import { getStrategySignal } from './utils/strategyLogic';
+import type { StrategyType } from './utils/strategyLogic';
 import type { IBacktestTrade, IFiboStrategyResult } from './utils/fiboLogic';
 
 interface IBacktestResult {
   symbol: string;
+  strategyName: string;
   winRate: string;
   totalTrades: number;
   trades: IBacktestTrade[];
@@ -15,8 +18,15 @@ interface Props {
   onBack: () => void;
 }
 
+const STRATEGIES: { value: StrategyType; label: string }[] = [
+  { value: 'FIBO', label: '斐波那契強勢突破' },
+  { value: 'MA_CROSS', label: '均線黃金交叉 (5/20)' },
+  { value: 'RSI_OVERSOLD', label: 'RSI 超賣反彈' },
+];
+
 const StockStrategyApp: React.FC<Props> = ({ onBack }) => {
   const [symbol, setSymbol] = useState('2330');
+  const [strategyType, setStrategyType] = useState<StrategyType>('FIBO');
   const [backtest, setBacktest] = useState<IBacktestResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -28,12 +38,65 @@ const StockStrategyApp: React.FC<Props> = ({ onBack }) => {
     setError(null);
     try {
       const history = await fetchYahooHistory(symbol, '1y');
-      const result = runBacktest(symbol, history, 60);
-      const currentSignal = calculateFiboStrategy(symbol, history, 60);
       
+      if (history.length < 60) {
+        throw new Error(`歷史數據不足 (僅 ${history.length} 天)，策略需要至少 60 天的資料才能運行。`);
+      }
+
+      const trades: IBacktestTrade[] = [];
+      let activeTrade: any = null;
+
+      for (let i = 60; i < history.length; i++) {
+        const currentDay = history[i];
+        if (activeTrade) {
+          if (currentDay.high >= activeTrade.tp) {
+            trades.push({ ...activeTrade, exitDate: currentDay.date, exitPrice: activeTrade.tp, isWin: true, profitPercent: ((activeTrade.tp - activeTrade.entryPrice) / activeTrade.entryPrice) * 100, rrRatio: 1 });
+            activeTrade = null;
+          } else if (currentDay.low <= activeTrade.sl) {
+            trades.push({ ...activeTrade, exitDate: currentDay.date, exitPrice: activeTrade.sl, isWin: false, profitPercent: ((activeTrade.sl - activeTrade.entryPrice) / activeTrade.entryPrice) * 100, rrRatio: 1 });
+            activeTrade = null;
+          }
+        } else {
+          const sig = getStrategySignal(strategyType, history, i);
+          if (sig.hasSignal && sig.entry && sig.tp && sig.sl) {
+            activeTrade = { entryDate: currentDay.date, entryPrice: sig.entry, tp: sig.tp, sl: sig.sl };
+          }
+        }
+      }
+
+      const winCount = trades.filter(t => t.isWin).length;
+      const winRate = trades.length > 0 ? (winCount / trades.length) * 100 : 0;
+      const latestSig = getStrategySignal(strategyType, history);
+
+      // 如果是 FIBO，額外計算 levels
+      let levels: Record<string, number> | undefined = undefined;
+      if (strategyType === 'FIBO') {
+        const recent = history.slice(-60);
+        const high = Math.max(...recent.map(d => d.high));
+        const low = Math.min(...recent.map(d => d.low));
+        const diff = high - low;
+        levels = {
+          '0.236': high - diff * 0.236,
+          '0.382': high - diff * 0.382,
+          '0.5': high - diff * 0.5,
+          '0.618': high - diff * 0.618,
+        };
+      }
+
       setBacktest({
-        ...result,
-        currentSignal
+        symbol,
+        strategyName: STRATEGIES.find(s => s.value === strategyType)?.label || '',
+        winRate: `${winRate.toFixed(2)}%`,
+        totalTrades: trades.length,
+        trades: trades.reverse(),
+        currentSignal: {
+          symbol,
+          hasSignal: latestSig.hasSignal,
+          state: activeTrade ? 'HOLDING' : 'WAITING_ENTRY',
+          activeTrade: activeTrade || undefined,
+          meta: latestSig.meta,
+          levels
+        }
       });
     } catch (err: any) {
       console.error('Backtest error:', err);
@@ -52,21 +115,34 @@ const StockStrategyApp: React.FC<Props> = ({ onBack }) => {
       <div className="glass-card animate-in">
         <div className="header-section">
           <div className="title-group">
-            <h1>斐波那契策略回測</h1>
+            <h1>多策略回測系統</h1>
           </div>
           <div className="status-badge">
-            ● Pure Frontend Mode
+            ● Strategy Hub
           </div>
         </div>
 
         <div className="input-group">
+          <div className="input-field-wrapper" style={{ flex: 1.5 }}>
+            <span className="input-label">策略選擇</span>
+            <select 
+              value={strategyType}
+              onChange={(e) => setStrategyType(e.target.value as StrategyType)}
+              className="strategy-select"
+            >
+              {STRATEGIES.map(s => (
+                <option key={s.value} value={s.value}>{s.label}</option>
+              ))}
+            </select>
+          </div>
+
           <div className="input-field-wrapper">
             <span className="input-label">股票代號</span>
             <input 
               type="text" 
               value={symbol} 
               onChange={(e) => setSymbol(e.target.value.toUpperCase())}
-              placeholder="例如: 2330, TSLA"
+              placeholder="代號"
               onKeyDown={(e) => e.key === 'Enter' && handleRunBacktest()}
             />
           </div>
@@ -139,32 +215,46 @@ const StockStrategyApp: React.FC<Props> = ({ onBack }) => {
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: '1rem' }}>
                 <div>
                   <div className="stat-label">進場價格</div>
-                  <div className="stat-value" style={{ fontSize: '1.5rem' }}>{backtest.currentSignal.activeTrade?.entryPrice.toFixed(2)}</div>
+                  <div className="stat-value" style={{ fontSize: '1.5rem' }}>{backtest.currentSignal.activeTrade?.entryPrice?.toFixed(2) || '---'}</div>
                   <div style={{ fontSize: '0.65rem', color: 'var(--text-secondary)' }}>{backtest.currentSignal.activeTrade?.entryDate}</div>
                 </div>
                 <div>
                   <div className="stat-label">止盈價格 (TP)</div>
-                  <div className="stat-value" style={{ fontSize: '1.5rem', color: '#10b981' }}>{backtest.currentSignal.activeTrade?.tp.toFixed(2)}</div>
+                  <div className="stat-value" style={{ fontSize: '1.5rem', color: '#10b981' }}>{backtest.currentSignal.activeTrade?.tp?.toFixed(2) || '---'}</div>
                 </div>
                 <div>
                   <div className="stat-label">止損價格 (SL)</div>
-                  <div className="stat-value" style={{ fontSize: '1.5rem', color: '#ef4444' }}>{backtest.currentSignal.activeTrade?.sl.toFixed(2)}</div>
+                  <div className="stat-value" style={{ fontSize: '1.5rem', color: '#ef4444' }}>{backtest.currentSignal.activeTrade?.sl?.toFixed(2) || '---'}</div>
                 </div>
               </div>
             ) : (
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: '1rem' }}>
-                <div>
-                  <div className="stat-label">預計進場 (突破)</div>
-                  <div className="stat-value" style={{ fontSize: '1.5rem', color: '#6366f1' }}>{backtest.currentSignal.levels?.['0.236']?.toFixed(2)}</div>
-                </div>
-                <div>
-                  <div className="stat-label">23.6% 位階</div>
-                  <div className="stat-value" style={{ fontSize: '1.5rem' }}>{backtest.currentSignal.levels?.['0.236']?.toFixed(2)}</div>
-                </div>
-                <div>
-                  <div className="stat-label">38.2% 位階</div>
-                  <div className="stat-value" style={{ fontSize: '1.5rem', color: 'var(--text-secondary)' }}>{backtest.currentSignal.levels?.['0.382']?.toFixed(2)}</div>
-                </div>
+                {strategyType === 'FIBO' ? (
+                  <>
+                    <div>
+                      <div className="stat-label">預計進場 (突破)</div>
+                      <div className="stat-value" style={{ fontSize: '1.5rem', color: '#6366f1' }}>{backtest.currentSignal.levels?.['0.236']?.toFixed(2) || '---'}</div>
+                    </div>
+                    <div>
+                      <div className="stat-label">23.6% 位階</div>
+                      <div className="stat-value" style={{ fontSize: '1.5rem' }}>{backtest.currentSignal.levels?.['0.236']?.toFixed(2) || '---'}</div>
+                    </div>
+                    <div>
+                      <div className="stat-label">38.2% 位階</div>
+                      <div className="stat-value" style={{ fontSize: '1.5rem', color: 'var(--text-secondary)' }}>{backtest.currentSignal.levels?.['0.382']?.toFixed(2) || '---'}</div>
+                    </div>
+                  </>
+                ) : (
+                  <div>
+                    <div className="stat-label">當前信號條件</div>
+                    <div className="stat-value" style={{ fontSize: '1.5rem', color: '#6366f1' }}>
+                      {backtest.currentSignal.meta || '正在掃描...'}
+                    </div>
+                    <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: '0.5rem' }}>
+                      等待符合策略的買點出現
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -191,11 +281,11 @@ const StockStrategyApp: React.FC<Props> = ({ onBack }) => {
                       </span>
                     </td>
                     <td className="date-text">{trade.entryDate}</td>
-                    <td style={{ fontWeight: 700 }}>{trade.entryPrice.toFixed(2)}</td>
+                    <td style={{ fontWeight: 700 }}>{trade.entryPrice?.toFixed(2) || '---'}</td>
                     <td className="date-text">{trade.exitDate}</td>
-                    <td style={{ fontWeight: 700 }}>{trade.exitPrice.toFixed(2)}</td>
+                    <td style={{ fontWeight: 700 }}>{trade.exitPrice?.toFixed(2) || '---'}</td>
                     <td className={trade.profitPercent >= 0 ? 'price-up' : 'price-down'}>
-                      {trade.profitPercent > 0 ? '+' : ''}{trade.profitPercent.toFixed(2)}%
+                      {trade.profitPercent > 0 ? '+' : ''}{trade.profitPercent?.toFixed(2) || '0.00'}%
                     </td>
                   </tr>
                 ))}

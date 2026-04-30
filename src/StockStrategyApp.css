@@ -315,3 +315,32 @@
   align-items: center;
   gap: 0.75rem;
 }
+
+.strategy-select {
+  width: 100%;
+  background: transparent;
+  border: none;
+  padding: 0.75rem 1rem;
+  color: white;
+  font-size: 1.1rem;
+  font-weight: 600;
+  outline: none;
+  cursor: pointer;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='rgba(255,255,255,0.5)'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.5rem center;
+  background-size: 1rem;
+}
+
+.strategy-select option {
+  background: #1e293b;
+  color: white;
+}
+
+.active-meta {
+  font-size: 0.85rem;
+  color: #818cf8;
+  margin-top: 0.5rem;
+  font-weight: 500;
+}
