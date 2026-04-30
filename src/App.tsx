@@ -11,7 +11,7 @@ import StockScreenerApp from './StockScreenerApp'
 import StockStrategyApp from './StockStrategyApp'
 
 export default function App() {
-  const [currentView, setCurrentView] = useState<'home' | 'weather' | 'game' | 'rhythm' | 'survivor' | 'fluidcore' | 'chronoshatter' | 'etf' | 'screener' | 'fibo'>('home')
+  const [currentView, setCurrentView] = useState<'home' | 'weather' | 'game' | 'rhythm' | 'survivor' | 'fluidcore' | 'chronoshatter' | 'etf' | 'screener' | 'fibo' | 'analysis' | 'radar'>('home')
 
   return (
     <>
@@ -43,7 +43,13 @@ export default function App() {
         <StockScreenerApp onBack={() => setCurrentView('home')} />
       )}
       {currentView === 'fibo' && (
-        <StockStrategyApp onBack={() => setCurrentView('home')} />
+        <StockStrategyApp onBack={() => setCurrentView('home')} initialTab="backtest" />
+      )}
+      {currentView === 'analysis' && (
+        <StockStrategyApp onBack={() => setCurrentView('home')} initialTab="diagnosis" />
+      )}
+      {currentView === 'radar' && (
+        <StockStrategyApp onBack={() => setCurrentView('home')} initialTab="radar" />
       )}
     </>
   )

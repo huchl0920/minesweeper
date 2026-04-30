@@ -4,7 +4,7 @@ interface Props {
   onAppClick: (appId: string) => void;
 }
 
-const releaseVersion = "v2026.04.29.1625";
+const releaseVersion = "v2026.04.30.1700";
 
 export default function Home({ onAppClick }: Props) {
   // Current time display for a nice dashboard feel
@@ -92,6 +92,22 @@ export default function Home({ onAppClick }: Props) {
               <span className="icon-emoji">🎯</span>
             </div>
             <span className="app-label">策略回測</span>
+          </div>
+
+          {/* Trade Analysis App */}
+          <div className="app-icon-wrapper" onClick={() => onAppClick('analysis')}>
+            <div className="app-icon" style={{ background: 'linear-gradient(135deg, #6366f1, #4f46e5)', border: '2px solid #818cf8', boxShadow: '0 0 10px #6366f1' }}>
+              <span className="icon-emoji">🩺</span>
+            </div>
+            <span className="app-label">交易診斷</span>
+          </div>
+
+          {/* Smart Radar App */}
+          <div className="app-icon-wrapper" onClick={() => onAppClick('radar')}>
+            <div className="app-icon" style={{ background: 'linear-gradient(135deg, #f59e0b, #d97706)', border: '2px solid #fbbf24', boxShadow: '0 0 10px #f59e0b' }}>
+              <span className="icon-emoji">🎯</span>
+            </div>
+            <span className="app-label">智能雷達</span>
           </div>
         </div>
         
