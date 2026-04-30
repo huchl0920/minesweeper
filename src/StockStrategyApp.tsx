@@ -60,52 +60,6 @@ function macd(prices: number[]) {
   return { dif: difs[L], dea: deas[L], prevDif: difs[L - 1], prevDea: deas[L - 1] };
 }
 
-// ── 雷達專用：優先 FinMind 抓歷史資料（不會 403）──
-async function fetchHistory(code: string): Promise<{ date: string; close: number; high: number; low: number; volume: number }[]> {
-  const startDate = new Date();
-  startDate.setFullYear(startDate.getFullYear() - 1);
-  const start = startDate.toISOString().split('T')[0];
-
-  // 1. 先試 FinMind（台股最穩定）
-  try {
-    const res = await fetch(`/api/finmind/api/v4/data?dataset=TaiwanStockPrice&stock_id=${code}&start_date=${start}`);
-    if (res.ok) {
-      const json = await res.json();
-      if (json.data && json.data.length > 10) {
-        return json.data.map((d: any) => ({
-          date: d.date,
-          close: d.close,
-          high: d.max,
-          low: d.min,
-          volume: d.Trading_Volume,
-        }));
-      }
-    }
-  } catch { /* fallback */ }
-
-  // 2. FinMind 失敗，試 Yahoo
-  try {
-    const sym = code + '.TW';
-    const res = await fetch(`/api/yahoo/v8/finance/chart/${sym}?range=1y&interval=1d`);
-    if (res.ok) {
-      const json = await res.json();
-      const r = json.chart?.result?.[0];
-      if (r?.timestamp) {
-        const q = r.indicators.quote[0];
-        return r.timestamp.map((ts: number, i: number) => ({
-          date: new Date(ts * 1000).toISOString().split('T')[0],
-          close: q.close[i] || 0,
-          high: q.high[i] || 0,
-          low: q.low[i] || 0,
-          volume: q.volume[i] || 0,
-        })).filter((d: any) => d.close > 0);
-      }
-    }
-  } catch { /* give up */ }
-
-  return [];
-}
-
 // ── Multi-factor scoring ────────────────────────────
 async function analyzeStock(sym: string, name: string): Promise<IRadarCandidate | null> {
   try {
