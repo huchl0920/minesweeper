@@ -79,14 +79,80 @@ async function analyzeStock(sym: string, name: string): Promise<IRadarCandidate 
     // 2. 最低價格：現價 > 5 元 (避免雞蛋水餃股)
     if (closes[L] < 5) return null;
 
+    // ══════════════════════════════════════════════════
+    // 專屬引擎: 平台壓縮突破 (Consolidation Breakout / VCP)
+    // 條件：上漲趨勢 -> 近一週(5日)極度壓縮且量縮 -> 帶量突破箱頂
+    // ══════════════════════════════════════════════════
+    if (L >= 25) {
+      // 1. 上漲趨勢：6天前比20天前漲幅 > 5% (放寬)
+      const priorTrend = (closes[L - 6] - closes[L - 20]) / closes[L - 20];
+      
+      if (priorTrend > 0.05) {
+        // 2. 區間盤整 (L-5 到 L-1)
+        const recent5 = hist.slice(L - 5, L);
+        const boxHigh = Math.max(...recent5.map(d => d.high));
+        const boxLow = Math.min(...recent5.map(d => d.low));
+        const boxAmplitude = (boxHigh - boxLow) / boxLow;
+        
+        // 盤整期均量
+        const boxAvgVol = recent5.reduce((sum, d) => sum + d.volume, 0) / 5;
+        // 前期均量 (L-20 到 L-6)
+        const priorAvgVol = hist.slice(L - 20, L - 5).reduce((sum, d) => sum + d.volume, 0) / 15;
+
+        // 放寬：盤整振幅 < 8%，且量縮
+        if (boxAmplitude < 0.08 && boxAvgVol <= priorAvgVol * 1.1) {
+          // 3. 準備突破且帶量 (L日)
+          const isBreakout = closes[L] >= boxHigh * 0.95; // 收盤價逼近箱頂 (距離5%以內)
+          const isVolSurge = volumes[L] > boxAvgVol * 1.2; // 溫和出量
+          
+          if (isBreakout && isVolSurge) {
+             // 進行歷史回測 (尋找相似的 VCP 突破勝率)
+             let wins = 0, total = 0;
+             for (let i = 60; i < hist.length - 3; i++) {
+               const bHigh = Math.max(...hist.slice(i-5, i).map(d=>d.high));
+               const bLow = Math.min(...hist.slice(i-5, i).map(d=>d.low));
+               if (bHigh > 0 && (bHigh - bLow)/bLow < 0.08 && hist[i].close >= bHigh * 0.95) {
+                 total++;
+                 if (hist[i+3].close > hist[i].close) wins++; // 突破後持有3日勝率
+               }
+             }
+             const winRate = total >= 3 ? (wins / total) * 100 : 55.0; // 預設值
+
+             if (winRate >= 50) {
+               const entry = closes[L];
+               const tp = entry * 1.10; // 突破預期 10%
+               const sl = boxLow * 0.98; // 跌破箱底停損
+               
+               return {
+                 symbol: sym,
+                 name,
+                 score: 90, 
+                 winRate,
+                 entry,
+                 tp,
+                 sl,
+                 rr: Math.abs(tp - entry) / Math.max(0.01, Math.abs(entry - sl)),
+                 reasons: ['🔥平台壓縮突破', `箱頂 ${boxHigh.toFixed(2)}`, '建言：跌破箱底停損'],
+                 currentPrice: closes[L],
+                 dataDate: hist[L].date
+               };
+             }
+          }
+        }
+      }
+    }
+
+    // ══════════════════════════════════════════════════
+    // 引擎 A: 綜合多因子突破 (Multi-factor Trend Following)
+    // ══════════════════════════════════════════════════
     const reasons: string[] = [];
     let score = 0;
 
-    // ── 因子評分 ──────────────────────────────────────
-    // 因子 A: 均線多頭排列 5>20>60 (25分)
     const ma5  = ma(closes, 5,  L);
     const ma20 = ma(closes, 20, L);
     const ma60 = ma(closes, 60, L);
+
+    // 因子 A: 均線多頭排列 5>20>60 (25分)
     if (ma5 > ma20 && ma20 > ma60) { score += 25; reasons.push('均線多頭排列'); }
     else return null; // 均線排列不符直接淘汰
 
@@ -102,22 +168,22 @@ async function analyzeStock(sym: string, name: string): Promise<IRadarCandidate 
     const bp236  = swHigh - diff * 0.236;
     if (closes[L - 1] <= bp236 && closes[L] > bp236) { score += 20; reasons.push('突破 Fibo 0.236'); }
 
-    // 因子 D: MACD 金叉 (15分) ← 新增
+    // 因子 D: MACD 金叉 (15分)
     const { dif, dea, prevDif, prevDea } = macd(closes);
     if (prevDif <= prevDea && dif > dea) { score += 15; reasons.push('MACD 金叉'); }
     else if (dif > dea && dif > 0)       { score += 8;  reasons.push('MACD 水上'); }
 
-    // 因子 E: 量縮整理後爆量突破 (20分) ← 新增
+    // 因子 E: 量縮整理後爆量突破 (20分)
     const vol3DayAvg = volumes.slice(-4, -1).reduce((a, b) => a + b, 0) / 3;
     const isConsolidation = vol3DayAvg < avgVol5 * 0.85; // 前3天量縮
     const isBurstDay = volumes[L] > avgVol5 * 1.8;       // 今天爆量
     if (isConsolidation && isBurstDay) { score += 20; reasons.push('量縮後爆量'); }
     else if (volumes[L] > avgVol5 * 1.5) { score += 10; reasons.push('爆量啟動'); }
 
-    // 因子 F: 低乖離率 (現價距 MA20 < 8%) (10分) ← 新增
-    const deviation = Math.abs((closes[L] - ma20) / ma20) * 100;
-    if (deviation < 8) { score += 10; reasons.push(`乖離 ${deviation.toFixed(1)}%`); }
-    else if (deviation >= 10) return null; // 追高超過 10% 直接淘汰
+    // 因子 F: 低乖離率 (現價距 MA20 < 8%) (10分)
+    const absDeviation = Math.abs((closes[L] - ma20) / ma20) * 100;
+    if (absDeviation < 8) { score += 10; reasons.push(`乖離 ${absDeviation.toFixed(1)}%`); }
+    else if (absDeviation >= 10) return null; // 追高超過 10% 直接淘汰
 
     // 因子 G: 20日趨勢向上 (5分)
     if (closes[L] > closes[L - 20]) { score += 5; reasons.push('20日上升趨勢'); }
@@ -135,7 +201,6 @@ async function analyzeStock(sym: string, name: string): Promise<IRadarCandidate 
 
     // ── 1年歷史勝率回測 ───────────────────────────────
     let wins = 0, total = 0;
-    // 用簡化版勝率：對最近 60 個交易日，若每次觸發突破後 10 天內碰 TP 為勝
     for (let i = 60; i < hist.length - 1; i++) {
       const slice = hist.slice(0, i + 1);
       const sliceHigh = Math.max(...slice.slice(-60).map(d => d.high));

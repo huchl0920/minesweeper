@@ -109,6 +109,14 @@ export default function Home({ onAppClick }: Props) {
             </div>
             <span className="app-label">智能雷達</span>
           </div>
+
+          {/* Data Export App */}
+          <div className="app-icon-wrapper" onClick={() => onAppClick('export')}>
+            <div className="app-icon" style={{ background: 'linear-gradient(135deg, #10b981, #059669)', border: '2px solid #34d399', boxShadow: '0 0 10px #10b981' }}>
+              <span className="icon-emoji">💾</span>
+            </div>
+            <span className="app-label">資料匯出</span>
+          </div>
         </div>
         
         {/* Version Display */}

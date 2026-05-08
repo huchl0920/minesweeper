@@ -9,9 +9,10 @@ import ChronoShatterApp from './ChronoShatterApp'
 import EtfApp from './EtfApp'
 import StockScreenerApp from './StockScreenerApp'
 import StockStrategyApp from './StockStrategyApp'
+import DataExportApp from './DataExportApp'
 
 export default function App() {
-  const [currentView, setCurrentView] = useState<'home' | 'weather' | 'game' | 'rhythm' | 'survivor' | 'fluidcore' | 'chronoshatter' | 'etf' | 'screener' | 'fibo' | 'analysis' | 'radar'>('home')
+  const [currentView, setCurrentView] = useState<'home' | 'weather' | 'game' | 'rhythm' | 'survivor' | 'fluidcore' | 'chronoshatter' | 'etf' | 'screener' | 'fibo' | 'analysis' | 'radar' | 'export'>('home')
 
   return (
     <>
@@ -50,6 +51,9 @@ export default function App() {
       )}
       {currentView === 'radar' && (
         <StockStrategyApp onBack={() => setCurrentView('home')} initialTab="radar" />
+      )}
+      {currentView === 'export' && (
+        <DataExportApp onBack={() => setCurrentView('home')} />
       )}
     </>
   )
