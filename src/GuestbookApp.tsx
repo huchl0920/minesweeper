@@ -120,7 +120,7 @@ export default function GuestbookApp({ onBack }: Props) {
 
   // 1. KeyValue.immanuel.co API 呼叫
   const fetchPublicKV = useCallback(async (key: string): Promise<string> => {
-    const res = await fetch(`https://keyvalue.immanuel.co/api/KeyVal/GetValue/${boardKey}/${key}`, {
+    const res = await fetch(`/api/keyval/GetValue/${boardKey}/${key}`, {
       headers: {
         'Accept': 'application/json'
       }
@@ -131,7 +131,7 @@ export default function GuestbookApp({ onBack }: Props) {
   }, [boardKey]);
 
   const updatePublicKV = useCallback(async (key: string, value: string): Promise<boolean> => {
-    const res = await fetch(`https://keyvalue.immanuel.co/api/KeyVal/UpdateValue/${boardKey}/${key}/${value}`, {
+    const res = await fetch(`/api/keyval/UpdateValue/${boardKey}/${key}/${value}`, {
       method: 'POST'
     });
     if (!res.ok) throw new Error(`寫入公共資料庫失敗 (${res.status})`);
@@ -331,7 +331,7 @@ export default function GuestbookApp({ onBack }: Props) {
     if (!window.confirm('確定要建立新的看板嗎？您將會取得一個全新的空白金鑰。')) return;
     setLoading(true);
     try {
-      const res = await fetch('https://keyvalue.immanuel.co/api/KeyVal/GetAppKey');
+      const res = await fetch('/api/keyval/GetAppKey');
       if (!res.ok) throw new Error('索取金鑰失敗');
       const newKey = (await res.text()).replace(/^"|"$/g, '').trim();
       if (newKey) {
