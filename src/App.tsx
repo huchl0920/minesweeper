@@ -10,9 +10,10 @@ import EtfApp from './EtfApp'
 import StockScreenerApp from './StockScreenerApp'
 import StockStrategyApp from './StockStrategyApp'
 import DataExportApp from './DataExportApp'
+import GuestbookApp from './GuestbookApp'
 
 export default function App() {
-  const [currentView, setCurrentView] = useState<'home' | 'weather' | 'game' | 'rhythm' | 'survivor' | 'fluidcore' | 'chronoshatter' | 'etf' | 'screener' | 'fibo' | 'analysis' | 'radar' | 'export'>('home')
+  const [currentView, setCurrentView] = useState<'home' | 'weather' | 'game' | 'rhythm' | 'survivor' | 'fluidcore' | 'chronoshatter' | 'etf' | 'screener' | 'fibo' | 'analysis' | 'radar' | 'export' | 'guestbook'>('home')
 
   return (
     <>
@@ -54,6 +55,9 @@ export default function App() {
       )}
       {currentView === 'export' && (
         <DataExportApp onBack={() => setCurrentView('home')} />
+      )}
+      {currentView === 'guestbook' && (
+        <GuestbookApp onBack={() => setCurrentView('home')} />
       )}
     </>
   )

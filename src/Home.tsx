@@ -117,6 +117,14 @@ export default function Home({ onAppClick }: Props) {
             </div>
             <span className="app-label">資料匯出</span>
           </div>
+
+          {/* Guestbook App */}
+          <div className="app-icon-wrapper" onClick={() => onAppClick('guestbook')}>
+            <div className="app-icon" style={{ background: 'linear-gradient(135deg, #8b5cf6, #4f46e5)', border: '2px solid #a78bfa', boxShadow: '0 0 10px #8b5cf6' }}>
+              <span className="icon-emoji">💬</span>
+            </div>
+            <span className="app-label">線上留言板</span>
+          </div>
         </div>
         
         {/* Version Display */}
