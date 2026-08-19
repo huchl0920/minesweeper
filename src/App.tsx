@@ -11,9 +11,10 @@ import StockScreenerApp from './StockScreenerApp'
 import StockStrategyApp from './StockStrategyApp'
 import DataExportApp from './DataExportApp'
 import GuestbookApp from './GuestbookApp'
+import MomoSearchApp from './MomoSearchApp'
 
 export default function App() {
-  const [currentView, setCurrentView] = useState<'home' | 'weather' | 'game' | 'rhythm' | 'survivor' | 'fluidcore' | 'chronoshatter' | 'etf' | 'screener' | 'fibo' | 'analysis' | 'radar' | 'export' | 'guestbook'>('home')
+  const [currentView, setCurrentView] = useState<'home' | 'weather' | 'game' | 'rhythm' | 'survivor' | 'fluidcore' | 'chronoshatter' | 'etf' | 'screener' | 'fibo' | 'analysis' | 'radar' | 'export' | 'guestbook' | 'momo'>('home')
 
   return (
     <>
@@ -58,6 +59,9 @@ export default function App() {
       )}
       {currentView === 'guestbook' && (
         <GuestbookApp onBack={() => setCurrentView('home')} />
+      )}
+      {currentView === 'momo' && (
+        <MomoSearchApp onBack={() => setCurrentView('home')} />
       )}
     </>
   )

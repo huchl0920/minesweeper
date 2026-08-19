@@ -125,6 +125,14 @@ export default function Home({ onAppClick }: Props) {
             </div>
             <span className="app-label">線上留言板</span>
           </div>
+
+          {/* MOMO Search & Price/Bonus Radar App */}
+          <div className="app-icon-wrapper" onClick={() => onAppClick('momo')}>
+            <div className="app-icon" style={{ background: 'linear-gradient(135deg, #d946ef, #e11d48)', border: '2px solid #f472b6', boxShadow: '0 0 12px #d946ef' }}>
+              <span className="icon-emoji">🛍️</span>
+            </div>
+            <span className="app-label" style={{ fontWeight: 'bold', color: '#f472b6' }}>MOMO比價</span>
+          </div>
         </div>
         
         {/* Version Display */}

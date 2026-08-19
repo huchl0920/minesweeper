@@ -6,6 +6,33 @@ export default defineConfig({
   plugins: [react()],
   server: {
     proxy: {
+      '/api/momo_direct': {
+        target: 'https://www.momoshop.com.tw/search/',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api\/momo_direct/, ''),
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+          'Referer': 'https://www.momoshop.com.tw/'
+        }
+      },
+      '/api/momo': {
+        target: 'https://m.momoshop.com.tw',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api\/momo/, ''),
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+          'Referer': 'https://m.momoshop.com.tw/'
+        }
+      },
+      '/api/momo_web': {
+        target: 'https://www.momoshop.com.tw',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api\/momo_web/, ''),
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+          'Referer': 'https://www.momoshop.com.tw/'
+        }
+      },
       '/api/moneydj': {
         target: 'https://www.moneydj.com',
         changeOrigin: true,
