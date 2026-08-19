@@ -25,8 +25,6 @@ export interface MomoProduct {
 const POPULAR_KEYWORDS = [
   'Pixel 11 Pro',
   'iPhone 17',
-  'AirPods Pro',
-  '行動電源'
 ];
 
 const CREDIT_CARDS = [
@@ -38,13 +36,9 @@ const CREDIT_CARDS = [
 ];
 
 export default function MomoSearchApp({ onBack }: Props) {
-  const [keyword, setKeyword] = useState<string>('Pixel 11 Pro');
-  const [searchInput, setSearchInput] = useState<string>('Pixel 11 Pro');
-  const [searchHistory, setSearchHistory] = useState<string[]>([
-    'Pixel 11 Pro',
-    'iPhone 17',
-    'AirPods Pro',
-  ]);
+  const [keyword, setKeyword] = useState<string>('');
+  const [searchInput, setSearchInput] = useState<string>('');
+  const [searchHistory, setSearchHistory] = useState<string[]>([]);
 
   const [loading, setLoading] = useState<boolean>(false);
   const [products, setProducts] = useState<MomoProduct[]>([]);
