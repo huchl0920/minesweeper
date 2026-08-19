@@ -1,10 +1,6 @@
 {
   "rewrites": [
     {
-      "source": "/api/keyval/:path*",
-      "destination": "https://keyvalue.immanuel.co/api/KeyVal/:path*"
-    },
-    {
       "source": "/api/twse/:path*",
       "destination": "https://mis.twse.com.tw/:path*"
     },
